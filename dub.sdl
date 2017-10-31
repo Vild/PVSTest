@@ -1,0 +1,6 @@
+name "pvstest"
+targetName "PVSTest"
+targetType "executable"
+targetPath "bin"
+dependency "derelict-sdl2" version="~>3.1.0-alpha.2"
+dependency "gl3n" version="~>1.3.1"
