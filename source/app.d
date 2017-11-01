@@ -19,7 +19,7 @@ enum Tile {
 }
 
 Tile toTile(Color c) {
-	if (c == Color(cast(ubyte)0xFF, cast(ubyte)0xFF, cast(ubyte)0xFF, cast(ubyte)0xFF))
+	if (c == Color(cast(ubyte)0x3F, cast(ubyte)0x3F, cast(ubyte)0x3F, cast(ubyte)0xFF))
 		return Tile.Air;
 	else if (c == Color(cast(ubyte)0x00, cast(ubyte)0x00, cast(ubyte)0x00, cast(ubyte)0xFF))
 		return Tile.Wall;
@@ -34,7 +34,7 @@ Tile toTile(Color c) {
 Color toColor(Tile t) {
 	switch (t) {
 	case Tile.Air:
-		return Color(cast(ubyte)0xFF, cast(ubyte)0xFF, cast(ubyte)0xFF, cast(ubyte)0xFF);
+		return Color(cast(ubyte)0x3F, cast(ubyte)0x3F, cast(ubyte)0x3F, cast(ubyte)0xFF);
 	case Tile.Wall:
 		return Color(cast(ubyte)0x00, cast(ubyte)0x00, cast(ubyte)0x00, cast(ubyte)0xFF);
 	case Tile.Door:
@@ -98,24 +98,7 @@ public:
 	}
 }
 
-SDL_Texture* makeRoomsBackground(Window w, vec2i mapSize, ref Room[] rooms) {
-	SDL_Texture* t = SDL_CreateTexture(w.renderer, SDL_PIXELFORMAT_RGB24, SDL_TEXTUREACCESS_TARGET,
-			cast(int)(mapSize.x * w.scale), cast(int)(mapSize.y * w.scale));
-
-	//SDL_RenderSetScale(w.renderer, 1, 1);
-	SDL_SetRenderTarget(w.renderer, t);
-	foreach (ref Room room; rooms)
-		with (room) {
-			SDL_SetRenderDrawColor(w.renderer, color.x, color.y, color.z, 255);
-			SDL_Rect r = SDL_Rect(cast(int)(position.x * w.scale), cast(int)(position.y * w.scale),
-					cast(int)((position.x + size.x) * w.scale), cast(int)((position.y + size.y) * w.scale));
-			SDL_RenderFillRect(w.renderer, &r);
-			SDL_SetRenderDrawColor(w.renderer, cast(int)(color.x / 4), cast(int)(color.y / 4), cast(int)(color.z / 4), 255);
-			SDL_RenderDrawRect(w.renderer, &r);
-		}
-	return t;
-}
-
+//Bresenham's line algorithm
 bool validPath(vec2i start, vec2i end, const ref Tile[][] map) {
 	import std.math : fabs, signbit;
 
@@ -153,9 +136,11 @@ struct Room {
 	vec2i[] canGoto;
 
 	void explore(vec2i p, const ref vec2i[] doors, const ref Tile[][] map, const ref vec2i mapSize) {
+		import std.algorithm : filter, canFind;
+
 		vec2i pos = position + p;
 
-		foreach (target; doors) {
+		foreach (target; doors.filter!(door => !canGoto.canFind(door))) {
 			if (map[target.y][target.x] != Tile.Door)
 				continue;
 			if (validPath(pos, target, map)) {
@@ -203,20 +188,16 @@ int main(string[] args) {
 
 	writeln("Map size: ", mapSize.x, "x", mapSize.y);
 
-	const xCount = mapSize.x / roomSize.x;
-	const yCount = mapSize.y / roomSize.y;
+	const int xCount = mapSize.x / roomSize.x;
+	const int yCount = mapSize.y / roomSize.y;
 
 	foreach (y; 0 .. yCount)
 		foreach (x; 0 .. xCount) {
-			ubyte r = cast(ubyte)((x * 128) / xCount);
-			ubyte g = cast(ubyte)((y * 128) / yCount);
-			ubyte b = cast(ubyte)(128 - r / 2 - g / 2);
+			ubyte r = 255; //cast(ubyte)((x * 128) / xCount);
+			ubyte g = 255; //cast(ubyte)((y * 128) / yCount);
+			ubyte b = 255; //cast(ubyte)(128 - r / 2 - g / 2);
 			rooms ~= Room(vec2i(x, y), vec2i(x * roomSize.x, y * roomSize.y), Color(r, g, b, cast(ubyte)255));
 		}
-
-	auto roomsBackground = makeRoomsBackground(w, mapSize, rooms);
-	scope (exit)
-		SDL_DestroyTexture(roomsBackground);
 
 	size_t roomIdx;
 	vec2i explorePos;
@@ -230,6 +211,7 @@ int main(string[] args) {
 			case SDL_QUIT:
 				quit = true;
 				break;
+
 			case SDL_KEYDOWN:
 				if (event.key.keysym.sym == SDLK_ESCAPE)
 					quit = true;
@@ -237,8 +219,6 @@ int main(string[] args) {
 
 			case SDL_MOUSEWHEEL:
 				w.scale += event.wheel.y * 0.01f;
-				SDL_DestroyTexture(roomsBackground);
-				roomsBackground = makeRoomsBackground(w, mapSize, rooms);
 				break;
 
 			default:
@@ -246,16 +226,17 @@ int main(string[] args) {
 			}
 		}
 
+		const size_t step = 2;
 		if (!first) {
-			auto start = SDL_GetPerformanceCounter();
-			while (((SDL_GetPerformanceCounter() - start) * 100) / SDL_GetPerformanceFrequency() < 1)
+			const auto start = SDL_GetPerformanceCounter();
+			while (((SDL_GetPerformanceCounter() - start) * 30) / SDL_GetPerformanceFrequency() < 1)
 				if (exploring) {
-					if (explorePos.x == roomSize.x) {
-						explorePos.y++;
+					if (explorePos.x >= roomSize.x) {
+						explorePos.y += step;
 						explorePos.x = 0;
 					}
 
-					if (explorePos.y == roomSize.y) {
+					if (explorePos.y >= roomSize.y) {
 						explorePos.y = 0;
 						roomIdx++;
 					}
@@ -263,8 +244,10 @@ int main(string[] args) {
 					import std.format : format;
 
 					if (roomIdx < rooms.length) {
+						// TODO: Doors should only contain doors that this rooms is connected to
+						// TODO: or that rooms that it is connected to has.
 						rooms[roomIdx].explore(explorePos, doors, map, mapSize);
-						explorePos.x++;
+						explorePos.x += step;
 
 						string title = format("Exploring Room (%dx%d), Pixel (%dx%d)", roomIdx % xCount, roomIdx / xCount, explorePos.x, explorePos.y);
 						SDL_SetWindowTitle(w.window, title.toStringz);
@@ -280,13 +263,22 @@ int main(string[] args) {
 		SDL_SetRenderDrawColor(w.renderer, 0, 0, 0, 255);
 		SDL_RenderClear(w.renderer);
 
-		SDL_RenderCopy(w.renderer, roomsBackground, null, null);
-
+		const size_t curPosIdx = explorePos.y * roomSize.x + explorePos.x;
 		foreach (int y, const ref Tile[] xRow; map)
 			foreach (int x, const ref Tile tile; xRow) {
 				auto c = tile.toColor;
-				SDL_SetRenderDrawColor(w.renderer, c.x, c.y, c.z, cast(ubyte)(c.w / 2));
-
+				if (tile == Tile.Air) {
+					const vec2i myRoomPos = vec2i(x / roomSize.x, y / roomSize.y);
+					const size_t myRoomIdx = myRoomPos.y * yCount + myRoomPos.x;
+					if (myRoomIdx <= roomIdx) {
+						const size_t myPosIdx = (y % roomSize.y) * roomSize.x + x % roomSize.x;
+						if (myRoomIdx == roomIdx && myPosIdx >= curPosIdx)
+							c = Color(cast(ubyte)0x7F, cast(ubyte)0x00, cast(ubyte)0x00, cast(ubyte)0xFF); // Status: TODO
+						else
+							c = Color(cast(ubyte)0x00, cast(ubyte)0x7F, cast(ubyte)0x00, cast(ubyte)0xFF); // Status: Done
+					}
+				}
+				SDL_SetRenderDrawColor(w.renderer, c.x, c.y, c.z, c.w);
 				SDL_RenderDrawPoint(w.renderer, x, y);
 			}
 
