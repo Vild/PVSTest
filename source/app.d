@@ -1,7 +1,7 @@
 import std.stdio;
 import derelict.sdl2.sdl;
 import derelict.sdl2.image;
-import gl3n.linalg;
+import gfm.math;
 import std.conv;
 import std.string;
 
@@ -179,7 +179,6 @@ int main(string[] args) {
 	enum roomSize = vec2i(64);
 	Tile[][] map;
 	Room[] rooms;
-	Door[] doors;
 	vec2i mapSize;
 	vec2i roomCount;
 
@@ -256,9 +255,7 @@ int main(string[] args) {
 					import std.format : format;
 
 					if (roomIdx < rooms.length) {
-						// TODO: Doors should only contain doors that this rooms is connected to
-						// TODO: or that rooms that it is connected to has.
-						rooms[roomIdx].explore(explorePos, doors, map, mapSize);
+						rooms[roomIdx].explore(explorePos, map, mapSize);
 						explorePos.x += step;
 
 						string title = format("Exploring Room (%dx%d), Pixel (%dx%d)", roomIdx % roomCount.x, roomIdx / roomCount.x,
