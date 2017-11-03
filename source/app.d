@@ -80,6 +80,7 @@ public:
 	this(int w, int h) {
 		this.w = w;
 		this.h = h;
+		SDL_SetHintWithPriority(SDL_HINT_RENDER_VSYNC, "0", SDL_HINT_OVERRIDE);
 		sdlAssert(!SDL_CreateWindowAndRenderer(cast(int)(w * scale), cast(int)(h * scale), 0, &window, &renderer),
 				"Failed to create window and renderer");
 	}
@@ -126,26 +127,45 @@ bool validPath(vec2i start, vec2i end, const ref Tile[][] map) {
 	return true;
 }
 
+enum Direction {
+	posX,
+	negX,
+	posY,
+	negY
+}
+
+struct Door {
+	vec2i[2] room; // Each door connects two rooms
+	vec2i worldPos;
+}
+
 struct Room {
 	vec2i id;
 	vec2i position;
 	enum vec2i size = vec2i(64, 64);
-	Color color;
 
+	Door[] doors;
 	size_t[] visibleRooms;
 	vec2i[] canGoto;
 
-	void explore(vec2i p, const ref vec2i[] doors, const ref Tile[][] map, const ref vec2i mapSize) {
+	void findPotentialDoors() {
+
+	}
+
+	void explore(vec2i p, const ref Tile[][] map, const ref vec2i mapSize) {
 		import std.algorithm : filter, canFind;
+		import std.range : chain;
 
 		vec2i pos = position + p;
 
-		foreach (target; doors.filter!(door => !canGoto.canFind(door))) {
-			if (map[target.y][target.x] != Tile.Door)
+		Door[] toBeExplored;
+
+		foreach (door; doors.chain(toBeExplored)) {
+			if (map[door.worldPos.y][door.worldPos.x] != Tile.Door)
 				continue;
-			if (validPath(pos, target, map)) {
-				//writeln("Pos: ", p, " can reach ", target);
-				canGoto ~= target;
+			if (validPath(pos, door.worldPos, map)) {
+				//writeln("Pos: ", p, " can reach ", door.worldPos);
+				canGoto ~= door.worldPos;
 			}
 		}
 	}
@@ -156,48 +176,40 @@ int main(string[] args) {
 	scope (exit)
 		sdl.destroy;
 
+	enum roomSize = vec2i(64);
 	Tile[][] map;
-	vec2i[] doors;
+	Room[] rooms;
+	Door[] doors;
 	vec2i mapSize;
-	{
+	vec2i roomCount;
+
+	{ // Create tiles
 		SDL_Surface* mapSurface = IMG_Load("map.png");
 		assert(mapSurface, "map.png is missing");
 		scope (exit)
 			SDL_FreeSurface(mapSurface);
 		mapSize = vec2i(mapSurface.w, mapSurface.h);
-
+		roomCount = vec2i(mapSize.x / roomSize.x, mapSize.y / roomSize.y);
 		assert(mapSurface.format.format == SDL_PIXELFORMAT_RGBA32, "Wrong format");
+
+		writeln("Map size: ", mapSize.x, "x", mapSize.y);
 		foreach (y; 0 .. mapSize.y) {
 			Tile[] xRow;
-			foreach (x; 0 .. mapSize.x) {
-				Tile t = (cast(Color*)mapSurface.pixels)[y * mapSurface.w + x].toTile;
-				if (t == Tile.Door)
-					doors ~= vec2i(x, y);
-				xRow ~= t;
-			}
+			foreach (x; 0 .. mapSize.x)
+				xRow ~= (cast(Color*)mapSurface.pixels)[y * mapSurface.w + x].toTile;
+
 			map ~= xRow;
 		}
+	}
+
+	{ // Create rooms
+		foreach (y; 0 .. roomCount.y)
+			foreach (x; 0 .. roomCount.x)
+				rooms ~= Room(vec2i(x, y), vec2i(x * roomSize.x, y * roomSize.y));
 	}
 	Window w = new Window(mapSize.x, mapSize.y);
 	scope (exit)
 		w.destroy;
-
-	Room[] rooms;
-
-	enum roomSize = vec2i(64);
-
-	writeln("Map size: ", mapSize.x, "x", mapSize.y);
-
-	const int xCount = mapSize.x / roomSize.x;
-	const int yCount = mapSize.y / roomSize.y;
-
-	foreach (y; 0 .. yCount)
-		foreach (x; 0 .. xCount) {
-			ubyte r = 255; //cast(ubyte)((x * 128) / xCount);
-			ubyte g = 255; //cast(ubyte)((y * 128) / yCount);
-			ubyte b = 255; //cast(ubyte)(128 - r / 2 - g / 2);
-			rooms ~= Room(vec2i(x, y), vec2i(x * roomSize.x, y * roomSize.y), Color(r, g, b, cast(ubyte)255));
-		}
 
 	size_t roomIdx;
 	vec2i explorePos;
@@ -229,7 +241,7 @@ int main(string[] args) {
 		const size_t step = 2;
 		if (!first) {
 			const auto start = SDL_GetPerformanceCounter();
-			while (((SDL_GetPerformanceCounter() - start) * 30) / SDL_GetPerformanceFrequency() < 1)
+			while (((SDL_GetPerformanceCounter() - start) * 100) / SDL_GetPerformanceFrequency() < 1)
 				if (exploring) {
 					if (explorePos.x >= roomSize.x) {
 						explorePos.y += step;
@@ -249,7 +261,8 @@ int main(string[] args) {
 						rooms[roomIdx].explore(explorePos, doors, map, mapSize);
 						explorePos.x += step;
 
-						string title = format("Exploring Room (%dx%d), Pixel (%dx%d)", roomIdx % xCount, roomIdx / xCount, explorePos.x, explorePos.y);
+						string title = format("Exploring Room (%dx%d), Pixel (%dx%d)", roomIdx % roomCount.x, roomIdx / roomCount.x,
+								explorePos.x, explorePos.y);
 						SDL_SetWindowTitle(w.window, title.toStringz);
 					} else {
 						exploring = false;
@@ -269,7 +282,7 @@ int main(string[] args) {
 				auto c = tile.toColor;
 				if (tile == Tile.Air) {
 					const vec2i myRoomPos = vec2i(x / roomSize.x, y / roomSize.y);
-					const size_t myRoomIdx = myRoomPos.y * yCount + myRoomPos.x;
+					const size_t myRoomIdx = myRoomPos.y * roomCount.y + myRoomPos.x;
 					if (myRoomIdx <= roomIdx) {
 						const size_t myPosIdx = (y % roomSize.y) * roomSize.x + x % roomSize.x;
 						if (myRoomIdx == roomIdx && myPosIdx >= curPosIdx)
