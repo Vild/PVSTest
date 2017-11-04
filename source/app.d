@@ -1,138 +1,10 @@
 import std.stdio;
-import derelict.sdl2.sdl;
-import derelict.sdl2.image;
 import gfm.math;
 import std.conv;
 import std.string;
 
-shared static this() {
-	DerelictSDL2.load();
-	DerelictSDL2Image.load();
-}
-
-alias Color = Vector!(ubyte, 4);
-
-enum Tile {
-	Air,
-	Wall,
-	Door
-}
-
-Tile toTile(Color c) {
-	if (c == Color(cast(ubyte)0x3F, cast(ubyte)0x3F, cast(ubyte)0x3F, cast(ubyte)0xFF))
-		return Tile.Air;
-	else if (c == Color(cast(ubyte)0x00, cast(ubyte)0x00, cast(ubyte)0x00, cast(ubyte)0xFF))
-		return Tile.Wall;
-	else if (c == Color(cast(ubyte)0x00, cast(ubyte)0xFF, cast(ubyte)0xFF, cast(ubyte)0xFF))
-		return Tile.Door;
-	else {
-		stderr.writeln("Color: ", c, " is undefined!");
-		assert(0);
-	}
-}
-
-Color toColor(Tile t) {
-	switch (t) {
-	case Tile.Air:
-		return Color(cast(ubyte)0x3F, cast(ubyte)0x3F, cast(ubyte)0x3F, cast(ubyte)0xFF);
-	case Tile.Wall:
-		return Color(cast(ubyte)0x00, cast(ubyte)0x00, cast(ubyte)0x00, cast(ubyte)0xFF);
-	case Tile.Door:
-		return Color(cast(ubyte)0x00, cast(ubyte)0xFF, cast(ubyte)0xFF, cast(ubyte)0xFF);
-
-	default:
-		assert(0);
-	}
-}
-
-bool isSolid(Tile t) {
-	return t == Tile.Wall;
-}
-
-void sdlAssert(T, Args...)(T cond, Args args) {
-	if (!!cond)
-		return;
-	stderr.writeln(args);
-	stderr.writeln("SDL_ERROR: ", SDL_GetError().fromStringz);
-	assert(0);
-}
-
-class SDL {
-	this() {
-		sdlAssert(!SDL_Init(SDL_INIT_EVERYTHING), "SDL could not initialize!");
-		sdlAssert(IMG_Init(IMG_INIT_PNG), "SDL_image could not initialize!");
-	}
-
-	~this() {
-		IMG_Quit();
-		SDL_Quit();
-	}
-}
-
-class Window {
-public:
-	SDL_Window* window;
-	SDL_Renderer* renderer;
-	int w;
-	int h;
-	float scale = 1;
-
-	this(int w, int h) {
-		this.w = w;
-		this.h = h;
-		SDL_SetHintWithPriority(SDL_HINT_RENDER_VSYNC, "0", SDL_HINT_OVERRIDE);
-		sdlAssert(!SDL_CreateWindowAndRenderer(cast(int)(w * scale), cast(int)(h * scale), 0, &window, &renderer),
-				"Failed to create window and renderer");
-	}
-
-	~this() {
-		SDL_DestroyRenderer(renderer);
-		SDL_DestroyWindow(window);
-	}
-
-	void reset() {
-		SDL_SetRenderTarget(renderer, null);
-		SDL_SetWindowSize(window, cast(int)(w * scale), cast(int)(h * scale));
-		SDL_RenderSetScale(renderer, scale, scale);
-		SDL_RenderSetIntegerScale(renderer, SDL_TRUE);
-		SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-	}
-}
-
-//Bresenham's line algorithm
-bool validPath(vec2i start, vec2i end, const ref Tile[][] map) {
-	import std.math : fabs, signbit;
-
-	if (start == end)
-		return true;
-
-	int dX = end.x - start.x;
-	int dY = end.y - start.y;
-
-	int sign = dY < 0 ? -1 : 1;
-
-	float deltaErr = dX ? fabs(dY / (1.0f * dX)) : 0;
-	float err = 0;
-
-	int y = start.y;
-	foreach (int x; start.x .. end.x) {
-		if (map[y][x].isSolid)
-			return false;
-		err += deltaErr;
-		while (err >= 0.5) {
-			y += sign;
-			err -= 1;
-		}
-	}
-	return true;
-}
-
-enum Direction {
-	posX,
-	negX,
-	posY,
-	negY
-}
+import sdl;
+import types;
 
 struct Door {
 	vec2i[2] room; // Each door connects two rooms
@@ -161,10 +33,8 @@ struct Room {
 		Door[] toBeExplored;
 
 		foreach (door; doors.chain(toBeExplored)) {
-			if (map[door.worldPos.y][door.worldPos.x] != Tile.Door)
-				continue;
 			if (validPath(pos, door.worldPos, map)) {
-				//writeln("Pos: ", p, " can reach ", door.worldPos);
+				writeln("Pos: ", p, " can reach ", door.worldPos);
 				canGoto ~= door.worldPos;
 			}
 		}
@@ -213,30 +83,8 @@ int main(string[] args) {
 	size_t roomIdx;
 	vec2i explorePos;
 	bool exploring = true;
-	bool quit = false;
 	bool first = true;
-	while (!quit) {
-		SDL_Event event;
-		while (SDL_PollEvent(&event)) {
-			switch (event.type) {
-			case SDL_QUIT:
-				quit = true;
-				break;
-
-			case SDL_KEYDOWN:
-				if (event.key.keysym.sym == SDLK_ESCAPE)
-					quit = true;
-				break;
-
-			case SDL_MOUSEWHEEL:
-				w.scale += event.wheel.y * 0.01f;
-				break;
-
-			default:
-				break;
-			}
-		}
-
+	while (sdl.doEvent(w)) {
 		const size_t step = 2;
 		if (!first) {
 			const auto start = SDL_GetPerformanceCounter();
