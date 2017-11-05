@@ -6,17 +6,34 @@ import std.string;
 import sdl;
 import types;
 
+final struct vec2i {
+	gfm.math.vec2i v;
+	alias v this;
+
+	this(Args...)(Args args) {
+		v = gfm.math.vec2i(args);
+	}
+
+	ulong toHash() @nogc nothrow const {
+		return cast(ulong)v.y << 32UL | cast(ulong)v.x;
+	}
+}
+
+alias DoorIdx = vec2i;
+alias RoomIdx = vec2i;
+
 struct Door {
+	DoorIdx id;
 	vec2i[2] room; // Each door connects two rooms
-	vec2i worldPos;
+	vec4i worldRect;
 }
 
 struct Room {
-	vec2i id;
+	RoomIdx id;
 	vec2i position;
 	enum vec2i size = vec2i(64, 64);
 
-	Door[] doors;
+	DoorIdx[] doors;
 	size_t[] visibleRooms;
 	vec2i[] canGoto;
 
@@ -30,13 +47,13 @@ struct Room {
 
 		vec2i pos = position + p;
 
-		Door[] toBeExplored;
+		DoorIdx[] toBeExplored;
 
 		foreach (door; doors.chain(toBeExplored)) {
-			if (validPath(pos, door.worldPos, map)) {
+			/*if (validPath(pos, door.worldPos, map)) {
 				writeln("Pos: ", p, " can reach ", door.worldPos);
 				canGoto ~= door.worldPos;
-			}
+			}*/
 		}
 	}
 }
@@ -48,7 +65,8 @@ int main(string[] args) {
 
 	enum roomSize = vec2i(64);
 	Tile[][] map;
-	Room[] rooms;
+	Door[DoorIdx] doors;
+	Room[RoomIdx] rooms;
 	vec2i mapSize;
 	vec2i roomCount;
 
@@ -73,9 +91,13 @@ int main(string[] args) {
 
 	{ // Create rooms
 		foreach (y; 0 .. roomCount.y)
-			foreach (x; 0 .. roomCount.x)
-				rooms ~= Room(vec2i(x, y), vec2i(x * roomSize.x, y * roomSize.y));
+			foreach (x; 0 .. roomCount.x) {
+				auto r = Room(vec2i(x, y), vec2i(x * roomSize.x, y * roomSize.y));
+				r.findPotentialDoors();
+				rooms[r.id] = r;
+			}
 	}
+
 	Window w = new Window(mapSize.x, mapSize.y);
 	scope (exit)
 		w.destroy;
@@ -84,6 +106,8 @@ int main(string[] args) {
 	vec2i explorePos;
 	bool exploring = true;
 	bool first = true;
+	auto roomsRange = rooms.byValue;
+	Room* room = &roomsRange.front();
 	while (sdl.doEvent(w)) {
 		const size_t step = 2;
 		if (!first) {
@@ -98,12 +122,14 @@ int main(string[] args) {
 					if (explorePos.y >= roomSize.y) {
 						explorePos.y = 0;
 						roomIdx++;
+						roomsRange.popFront();
+						room = roomsRange.empty ? null : &roomsRange.front();
 					}
 
 					import std.format : format;
 
-					if (roomIdx < rooms.length) {
-						rooms[roomIdx].explore(explorePos, map, mapSize);
+					if (!roomsRange.empty) {
+						room.explore(explorePos, map, mapSize);
 						explorePos.x += step;
 
 						string title = format("Exploring Room (%dx%d), Pixel (%dx%d)", roomIdx % roomCount.x, roomIdx / roomCount.x,

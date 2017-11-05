@@ -4,6 +4,7 @@ public import derelict.sdl2.sdl;
 public import derelict.sdl2.image;
 
 import std.stdio;
+import types;
 
 shared static this() {
 	DerelictSDL2.load();
@@ -63,7 +64,7 @@ public:
 	SDL_Renderer* renderer;
 	int w;
 	int h;
-	float scale = 1;
+	float scale = 2;
 
 	this(int w, int h) {
 		this.w = w;
