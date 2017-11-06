@@ -6,26 +6,13 @@ import std.string;
 import sdl;
 import types;
 
-final struct vec2i {
-	gfm.math.vec2i v;
-	alias v this;
-
-	this(Args...)(Args args) {
-		v = gfm.math.vec2i(args);
-	}
-
-	ulong toHash() @nogc nothrow const {
-		return cast(ulong)v.y << 32UL | cast(ulong)v.x;
-	}
-}
-
 alias DoorIdx = vec2i;
 alias RoomIdx = vec2i;
 
 struct Door {
 	DoorIdx id;
-	vec2i[2] room; // Each door connects two rooms
 	vec4i worldRect;
+	vec2i[2] room; // Each door connects two rooms
 }
 
 struct Room {
@@ -37,11 +24,90 @@ struct Room {
 	size_t[] visibleRooms;
 	vec2i[] canGoto;
 
-	void findPotentialDoors() {
+	void findPotentialDoors(ref Door[DoorIdx] globalDoors, ref Room[RoomIdx] rooms, const ref Tile[][] map, vec2i mapSize) {
+		void walk(vec2i pos, vec2i dir, vec2i outwards) {
+			enum State {
+				LookingForDoor,
+				BuildingDoor
+			}
 
+			State state = State.LookingForDoor;
+			Door door;
+			writeln("Walking ", pos, " to ", pos + dir * (size - 1 /*aka 0-63*/ ), ". Dir: ", dir, " Outwards: ", outwards);
+
+			void finishDoor() {
+				// Expand door
+				writeln("outwards.x < 0 || outwards.y < 0: ", outwards.x < 0, " || ", outwards.y < 0);
+				if (outwards.x < 0 || outwards.y < 0) {
+					door.id += outwards;
+					door.worldRect.x += outwards.x;
+					door.worldRect.y += outwards.y;
+					door.worldRect.z -= outwards.x;
+					door.worldRect.w -= outwards.y;
+				} else {
+					door.worldRect.z += outwards.x;
+					door.worldRect.w += outwards.y;
+				}
+
+				// Verify
+				for (size_t y; y < door.worldRect.w; y++)
+					for (size_t x; x < door.worldRect.z; x++)
+						if (map[y][x] == Tile.Door) {
+							stderr.writeln("!!!!!MAP HAS A LEAK (Air instead of door)!!!!! (", x, ",", y);
+							assert(0);
+						}
+
+				writeln("door.id: ", door.id);
+				writeln("door.worldRect: ", door.worldRect);
+				door.room[0] = (door.worldRect.xy / size);
+				door.room[1] = ((door.worldRect.xy + door.worldRect.zw) / size);
+
+				globalDoors[door.id] = door;
+				rooms[door.room[0]].doors ~= door.id;
+				rooms[door.room[1]].doors ~= door.id;
+
+				writeln("**Finalized**: ", door);
+				state = State.LookingForDoor;
+				door = Door.init;
+			}
+
+			for (auto walker = pos; walker != pos + dir * size; walker += dir) {
+				/*if (walker.x < 0 || walker.y < 0 || walker.x >= mapSize.x || walker.y >= mapSize.y)
+					continue;*/
+				switch (map[walker.y][walker.x]) {
+				case Tile.Door:
+					if (state == State.LookingForDoor) {
+						writeln("Making a new door: ", walker);
+						door.id = walker;
+						door.worldRect = vec4i(walker, 1, 1);
+						state = State.BuildingDoor;
+					} else {
+						writeln("\tAdding door block: ", walker);
+						door.worldRect.z += dir.x;
+						door.worldRect.w += dir.y;
+					}
+					break;
+				case Tile.Wall:
+					if (state == State.BuildingDoor)
+						finishDoor();
+					break;
+				default:
+					stderr.writeln("!!!!!MAP HAS A LEAK (Air instead of door or wall)!!!!! ", walker);
+					assert(0);
+				}
+			}
+			if (state == State.BuildingDoor)
+				finishDoor();
+		}
+
+		walk(position, vec2i(1, 0), vec2i(0, -1)); // Top
+		walk(position + vec2i(0, size.y - 1), vec2i(1, 0), vec2i(0, 1)); // Bottom
+
+		walk(position, vec2i(0, 1), vec2i(-1, 0)); // Left
+		walk(position + vec2i(size.x - 1, 0), vec2i(0, 1), vec2i(1, 0)); // Right
 	}
 
-	void explore(vec2i p, const ref Tile[][] map, const ref vec2i mapSize) {
+	void explore(vec2i p, const ref Door[DoorIdx] globalDoors, const ref Tile[][] map) {
 		import std.algorithm : filter, canFind;
 		import std.range : chain;
 
@@ -49,7 +115,8 @@ struct Room {
 
 		DoorIdx[] toBeExplored;
 
-		foreach (door; doors.chain(toBeExplored)) {
+		foreach (doorId; doors.chain(toBeExplored)) {
+			auto door = globalDoors[doorId];
 			/*if (validPath(pos, door.worldPos, map)) {
 				writeln("Pos: ", p, " can reach ", door.worldPos);
 				canGoto ~= door.worldPos;
@@ -92,10 +159,30 @@ int main(string[] args) {
 	{ // Create rooms
 		foreach (y; 0 .. roomCount.y)
 			foreach (x; 0 .. roomCount.x) {
-				auto r = Room(vec2i(x, y), vec2i(x * roomSize.x, y * roomSize.y));
-				r.findPotentialDoors();
+				auto r = Room(RoomIdx(x, y), vec2i(x * roomSize.x, y * roomSize.y));
 				rooms[r.id] = r;
 			}
+	}
+
+	{ // Find doors
+		foreach (r; rooms)
+			r.findPotentialDoors(doors, rooms, map, mapSize);
+	}
+
+	{ // Remove dups
+		import std.algorithm;
+
+		alias vecCmp = (a, b) pure{
+			if (a.y < b.y)
+				return false;
+			else if (a.y == b.y)
+				return b.x - a.x > 0;
+			else
+				return true;
+		};
+
+		foreach (RoomIdx idx, ref Room room; rooms)
+			room.doors.sort!vecCmp.uniq.copy(room.doors);
 	}
 
 	Window w = new Window(mapSize.x, mapSize.y);
@@ -129,7 +216,7 @@ int main(string[] args) {
 					import std.format : format;
 
 					if (!roomsRange.empty) {
-						room.explore(explorePos, map, mapSize);
+						room.explore(explorePos, doors, map);
 						explorePos.x += step;
 
 						string title = format("Exploring Room (%dx%d), Pixel (%dx%d)", roomIdx % roomCount.x, roomIdx / roomCount.x,
@@ -166,8 +253,26 @@ int main(string[] args) {
 				SDL_RenderDrawPoint(w.renderer, x, y);
 			}
 
+		{
+			Room* r = &rooms[RoomIdx(cast(int)(roomIdx % roomCount.x), cast(int)(roomIdx / roomCount.x))];
+			foreach (doorID; r.doors) {
+				Door* d = &doors[doorID];
+
+				for (size_t y; y < d.worldRect.w; y++)
+					for (size_t x; x < d.worldRect.z; x++) {
+						SDL_SetRenderDrawColor(w.renderer, cast(ubyte)0xFF, cast(ubyte)0xFF, cast(ubyte)0x00, cast(ubyte)0xFF);
+						SDL_RenderDrawPoint(w.renderer, cast(int)(d.worldRect.x + x), cast(int)(d.worldRect.y + y));
+					}
+			}
+		}
+
 		SDL_RenderPresent(w.renderer);
 	}
 
+	{
+		import core.stdc.stdlib : exit, EXIT_SUCCESS;
+
+		exit(EXIT_SUCCESS);
+	}
 	return 0;
 }

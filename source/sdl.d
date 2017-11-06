@@ -54,6 +54,12 @@ class SDL {
 				break;
 			}
 		}
+
+		if (quit) {
+			import core.stdc.stdlib;
+
+			exit(0);
+		}
 		return !quit;
 	}
 }
