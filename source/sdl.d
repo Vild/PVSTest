@@ -22,6 +22,7 @@ void sdlAssert(T, Args...)(T cond, Args args) {
 }
 
 class SDL {
+public:
 	this() {
 		sdlAssert(!SDL_Init(SDL_INIT_EVERYTHING), "SDL could not initialize!");
 		sdlAssert(IMG_Init(IMG_INIT_PNG), "SDL_image could not initialize!");
@@ -55,11 +56,6 @@ class SDL {
 			}
 		}
 
-		if (quit) {
-			import core.stdc.stdlib;
-
-			exit(0);
-		}
 		return !quit;
 	}
 }
