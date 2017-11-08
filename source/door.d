@@ -6,8 +6,16 @@ import room;
 
 alias DoorIdx = vec4i;
 
-size_t doorID(in DoorIdx id, vec2i doorCount) {
-	return id.y * doorCount.x + id.x;
+size_t doorID(in DoorIdx id, ref const vec2i roomCount) {
+	import std.stdio : writeln;
+
+	immutable size_t x = id.x / Room.size.x;
+	immutable size_t y = id.y / Room.size.y;
+	immutable size_t horizontalDoor = (id.y % Room.size.y) == (Room.size.y - 1) ? 1 : 0;
+
+	immutable size_t ret = 2*(y * roomCount.x + x) + horizontalDoor;
+	//writeln("id: ", id.xy, " -> ", ret);
+	return ret;
 }
 
 struct Door {

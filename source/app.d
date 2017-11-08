@@ -9,6 +9,157 @@ import types;
 import door;
 import room;
 
+interface IState {
+	void update();
+	void render();
+	@property bool isDone();
+}
+
+final class ExploreState : IState {
+public:
+	this(Engine engine) {
+		_engine = engine;
+	}
+
+	void update() {
+		const size_t step = 1;
+		immutable uint old = SDL_GetTicks();
+
+		do {
+			_explorePos.x += step;
+			if (_explorePos.x >= _engine._roomSize.x) {
+				_explorePos.y += step;
+				_explorePos.x = 0;
+			}
+
+			if (_explorePos.y >= _engine._roomSize.y) {
+				_explorePos.y = 0;
+				_currentRoom.finalize();
+				_roomIdx++;
+			}
+
+			_currentRoom = RoomIdx(cast(int)(_roomIdx % _engine._roomCount.x), cast(int)(_roomIdx / _engine._roomCount.x)) in _engine._rooms;
+			if (_currentRoom && _currentRoom.doors.length)
+				_currentRoom.explore(_explorePos, _engine._doors, _engine._rooms, _engine._map, _engine._roomCount);
+		}
+		while (_currentRoom && SDL_GetTicks() - old < 100 /*msec*/ );
+	}
+
+	void render() {
+		const size_t curPosIdx = _explorePos.y * _engine._roomSize.x + _explorePos.x;
+		foreach (int y, const ref Tile[] xRow; _engine._map)
+			foreach (int x, const ref Tile tile; xRow) {
+				auto c = tile.toColor;
+				if (tile == Tile.Air) {
+					const vec2i myRoomPos = vec2i(x / _engine._roomSize.x, y / _engine._roomSize.y);
+					const size_t myRoomIdx = myRoomPos.y * _engine._roomCount.y + myRoomPos.x;
+					if (myRoomIdx <= _roomIdx) {
+						const size_t myPosIdx = (y % _engine._roomSize.y) * _engine._roomSize.x + x % _engine._roomSize.x;
+						if (myRoomIdx == _roomIdx && myPosIdx >= curPosIdx)
+							c = Color(cast(ubyte)0x7F, cast(ubyte)0x00, cast(ubyte)0x00, cast(ubyte)0xFF); // Status: TODO
+						else
+							c = Color(cast(ubyte)0x00, cast(ubyte)0x7F, cast(ubyte)0x00, cast(ubyte)0xFF); // Status: Done
+					}
+				}
+				SDL_SetRenderDrawColor(_engine._window.renderer, c.x, c.y, c.z, c.w);
+				SDL_RenderDrawPoint(_engine._window.renderer, x, y);
+			}
+
+		if (_currentRoom) {
+			foreach (doorID; _currentRoom.doors) {
+				Door* d = &_engine._doors[doorID];
+
+				for (size_t y; y < d.id.w; y++)
+					for (size_t x; x < d.id.z; x++) {
+						SDL_SetRenderDrawColor(_engine._window.renderer, cast(ubyte)0xFF, cast(ubyte)0xFF, cast(ubyte)0x00, cast(ubyte)0xFF);
+						SDL_RenderDrawPoint(_engine._window.renderer, cast(int)(d.id.x + x), cast(int)(d.id.y + y));
+					}
+			}
+
+			string title = format("Exploring Room (%dx%d), Pixel (%dx%d)", _roomIdx % _engine._roomCount.x,
+					_roomIdx / _engine._roomCount.x, _explorePos.x, _explorePos.y);
+			SDL_SetWindowTitle(_engine._window.window, title.toStringz);
+		} else
+			SDL_SetWindowTitle(_engine._window.window, "Exploring done!");
+	}
+
+	@property bool isDone() {
+		return !_currentRoom;
+	}
+
+private:
+	Engine _engine;
+	size_t _roomIdx;
+	vec2i _explorePos = vec2i(-1, 0);
+	Room* _currentRoom;
+}
+
+final class VisualizeState : IState {
+public:
+	this(Engine engine) {
+		_engine = engine;
+	}
+
+	void update() {
+		vec2i pos;
+		immutable int s = SDL_GetMouseState(&pos.x, &pos.y);
+		pos = vec2i(cast(int)(pos.x / _engine._window.scale), cast(int)(pos.y / _engine._window.scale));
+
+		pos /= Room.size;
+		_currentRoom = pos in _engine._rooms;
+	}
+
+	void render() {
+		foreach (int y, const ref Tile[] xRow; _engine._map)
+			foreach (int x, const ref Tile tile; xRow) {
+				auto c = tile.toColor;
+				SDL_SetRenderDrawColor(_engine._window.renderer, c.x, c.y, c.z, c.w);
+				SDL_RenderDrawPoint(_engine._window.renderer, x, y);
+			}
+
+		if (_currentRoom) {
+			foreach (roomID; _currentRoom.visibleRooms) {
+				Room* d = &_engine._rooms[roomID];
+
+				// Skip walls
+				for (size_t y = 1; y < Room.size.y - 1; y++)
+					for (size_t x = 1; x < Room.size.x - 1; x++) {
+						SDL_SetRenderDrawColor(_engine._window.renderer, cast(ubyte)0xFF, cast(ubyte)0x00, cast(ubyte)0xFF, cast(ubyte)0xFF);
+						SDL_RenderDrawPoint(_engine._window.renderer, cast(int)(d.position.x + x), cast(int)(d.position.y + y));
+					}
+			}
+
+			foreach (doorID; _currentRoom.visibleDoors) {
+				Door* d = &_engine._doors[doorID];
+
+				for (size_t y; y < d.id.w; y++)
+					for (size_t x; x < d.id.z; x++) {
+						SDL_SetRenderDrawColor(_engine._window.renderer, cast(ubyte)0xFF, cast(ubyte)0x00, cast(ubyte)0x00, cast(ubyte)0xFF);
+						SDL_RenderDrawPoint(_engine._window.renderer, cast(int)(d.id.x + x), cast(int)(d.id.y + y));
+					}
+			}
+
+			foreach (doorID; _currentRoom.doors) {
+				Door* d = &_engine._doors[doorID];
+
+				for (size_t y; y < d.id.w; y++)
+					for (size_t x; x < d.id.z; x++) {
+						SDL_SetRenderDrawColor(_engine._window.renderer, cast(ubyte)0xFF, cast(ubyte)0xFF, cast(ubyte)0x00, cast(ubyte)0xFF);
+						SDL_RenderDrawPoint(_engine._window.renderer, cast(int)(d.id.x + x), cast(int)(d.id.y + y));
+					}
+			}
+		}
+	}
+
+	@property bool isDone() {
+		return false;
+	}
+
+private:
+	Engine _engine;
+	Room* _currentRoom;
+}
+
 class Engine {
 public:
 	this() {
@@ -24,35 +175,31 @@ public:
 
 	int run() {
 		enum State {
-			explore,
-			visualize
+			explore = 0,
+			visualize,
+
+			end
 		}
 
 		State state = State.explore;
-		roomsRange = _rooms.byValue;
+		IState[State] states = [
+			State.explore : cast(IState)new ExploreState(this), State.visualize : cast(IState)new VisualizeState(this),
+			State.end : cast(IState)null
+		];
 
-		while (_sdl.doEvent(_window)) {
-			final switch (state) {
-			case State.explore:
-				_explore();
-				break;
-			case State.visualize:
-				break;
-			}
+		while (states[state] && _sdl.doEvent(_window)) {
+			states[state].update();
 
 			_window.reset();
 			SDL_SetRenderDrawColor(_window.renderer, 0, 0, 0, 255);
 			SDL_RenderClear(_window.renderer);
 
-			final switch (state) {
-			case State.explore:
-				_exploreRender();
-				break;
-			case State.visualize:
-				break;
-			}
+			states[state].render();
 
 			SDL_RenderPresent(_window.renderer);
+
+			if (states[state].isDone())
+				state++;
 		}
 		return 0;
 	}
@@ -67,84 +214,6 @@ private:
 	Room[RoomIdx] _rooms;
 	vec2i _mapSize;
 	vec2i _roomCount;
-
-	size_t roomIdx;
-	vec2i explorePos;
-	bool exploring = true;
-	typeof(_rooms.byValue) roomsRange;
-
-	void _explore() {
-		const size_t step = 1;
-		immutable uint old = SDL_GetTicks();
-		Room* room = &roomsRange.front();
-		while (SDL_GetTicks() - old < 1 /*msec*/ )
-			do {
-				if (exploring) {
-					if (explorePos.x >= _roomSize.x) {
-						explorePos.y += step;
-						explorePos.x = 0;
-					}
-
-					if (explorePos.y >= _roomSize.y) {
-						explorePos.y = 0;
-						roomIdx++;
-						roomsRange.popFront();
-						room = roomsRange.empty ? null : &roomsRange.front();
-					}
-
-					import std.format : format;
-
-					if (!roomsRange.empty) {
-						room.explore(explorePos, _doors, _rooms, _map, _roomCount);
-						explorePos.x += step;
-					} else {
-						exploring = false;
-					}
-				}
-			}
-		while (roomIdx < _rooms.length && !_rooms[RoomIdx(cast(int)(roomIdx % _roomCount.x), cast(int)(roomIdx / _roomCount.x))].doors.length);
-	}
-
-	void _exploreRender() {
-		const size_t curPosIdx = explorePos.y * _roomSize.x + explorePos.x;
-		foreach (int y, const ref Tile[] xRow; _map)
-			foreach (int x, const ref Tile tile; xRow) {
-				auto c = tile.toColor;
-				if (tile == Tile.Air) {
-					const vec2i myRoomPos = vec2i(x / _roomSize.x, y / _roomSize.y);
-					const size_t myRoomIdx = myRoomPos.y * _roomCount.y + myRoomPos.x;
-					if (myRoomIdx <= roomIdx) {
-						const size_t myPosIdx = (y % _roomSize.y) * _roomSize.x + x % _roomSize.x;
-						if (myRoomIdx == roomIdx && myPosIdx >= curPosIdx)
-							c = Color(cast(ubyte)0x7F, cast(ubyte)0x00, cast(ubyte)0x00, cast(ubyte)0xFF); // Status: TODO
-						else
-							c = Color(cast(ubyte)0x00, cast(ubyte)0x7F, cast(ubyte)0x00, cast(ubyte)0xFF); // Status: Done
-					}
-				}
-				SDL_SetRenderDrawColor(_window.renderer, c.x, c.y, c.z, c.w);
-				SDL_RenderDrawPoint(_window.renderer, x, y);
-			}
-
-		if (exploring) {
-			Room* r = &_rooms[RoomIdx(cast(int)(roomIdx % _roomCount.x), cast(int)(roomIdx / _roomCount.x))];
-			foreach (doorID; r.doors) {
-				Door* d = &_doors[doorID];
-
-				for (size_t y; y < d.id.w; y++)
-					for (size_t x; x < d.id.z; x++) {
-						SDL_SetRenderDrawColor(_window.renderer, cast(ubyte)0xFF, cast(ubyte)0xFF, cast(ubyte)0x00, cast(ubyte)0xFF);
-						SDL_RenderDrawPoint(_window.renderer, cast(int)(d.id.x + x), cast(int)(d.id.y + y));
-					}
-			}
-
-			string title = format("Exploring Room (%dx%d), Pixel (%dx%d)", roomIdx % _roomCount.x, roomIdx / _roomCount.x,
-					explorePos.x, explorePos.y);
-			SDL_SetWindowTitle(_window.window, title.toStringz);
-		} else {
-			exploring = false;
-			SDL_SetWindowTitle(_window.window, "Exploring done!");
-		}
-	}
 
 	void _loadData() {
 		{ // Create tiles
