@@ -15,7 +15,7 @@ interface IState {
 	@property bool isDone();
 }
 
-final class ExploreState : IState {
+/+final class ExploreState : IState {
 public:
 	this(Engine engine) {
 		_engine = engine;
@@ -92,7 +92,7 @@ private:
 	size_t _roomIdx;
 	vec2i _explorePos = vec2i(-1, 0);
 	Room* _currentRoom;
-}
+}+/
 
 final class VisualizeState : IState {
 public:
@@ -118,7 +118,7 @@ public:
 			}
 
 		if (_currentRoom) {
-			foreach (roomID; _currentRoom.visibleRooms) {
+			/*foreach (roomID; _currentRoom.visibleRooms) {
 				Room* d = &_engine._rooms[roomID];
 
 				// Skip walls
@@ -127,9 +127,9 @@ public:
 						SDL_SetRenderDrawColor(_engine._window.renderer, cast(ubyte)0xFF, cast(ubyte)0x00, cast(ubyte)0xFF, cast(ubyte)0xFF);
 						SDL_RenderDrawPoint(_engine._window.renderer, cast(int)(d.position.x + x), cast(int)(d.position.y + y));
 					}
-			}
+			}*/
 
-			foreach (doorID; _currentRoom.visibleDoors) {
+			/*foreach (doorID; _currentRoom.visibleDoors) {
 				Door* d = &_engine._doors[doorID];
 
 				for (size_t y; y < d.id.w; y++)
@@ -137,10 +137,19 @@ public:
 						SDL_SetRenderDrawColor(_engine._window.renderer, cast(ubyte)0xFF, cast(ubyte)0x00, cast(ubyte)0x00, cast(ubyte)0xFF);
 						SDL_RenderDrawPoint(_engine._window.renderer, cast(int)(d.id.x + x), cast(int)(d.id.y + y));
 					}
-			}
+			}*/
 
 			foreach (doorID; _currentRoom.doors) {
 				Door* d = &_engine._doors[doorID];
+
+				foreach (i; 0..d.canSeeDoor.length)
+				if (d.canSeeDoor[i]) {
+					for (size_t y; y < d.id.w; y++)
+					for (size_t x; x < d.id.z; x++) {
+						SDL_SetRenderDrawColor(_engine._window.renderer, cast(ubyte)0xFF, cast(ubyte)0x00, cast(ubyte)0x00, cast(ubyte)0xFF);
+						SDL_RenderDrawPoint(_engine._window.renderer, cast(int)(d.id.x + x), cast(int)(d.id.y + y));
+					}
+				}
 
 				for (size_t y; y < d.id.w; y++)
 					for (size_t x; x < d.id.z; x++) {
@@ -181,9 +190,10 @@ public:
 			end
 		}
 
-		State state = State.explore;
+		State state = State.visualize; //State.explore;
 		IState[State] states = [
-			State.explore : cast(IState)new ExploreState(this), State.visualize : cast(IState)new VisualizeState(this),
+			//State.explore : cast(IState)new ExploreState(this),//
+			State.visualize : cast(IState)new VisualizeState(this),//
 			State.end : cast(IState)null
 		];
 
@@ -246,10 +256,12 @@ private:
 		{ // Find doors
 			foreach (ref Room r; _rooms) {
 				r.findPotentialDoors(_doors, _rooms, _map, _mapSize);
-				r.setupBits(_roomCount);
+				//r.setupBits(_roomCount);
 			}
 			writeln();
 		}
+
+		calculateDoorVisibilities(_doors, _map, _roomCount);
 	}
 }
 

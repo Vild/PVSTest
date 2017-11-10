@@ -19,12 +19,6 @@ struct Room {
 	enum vec2i size = vec2i(64, 64);
 
 	DoorIdx[] doors;
-	RoomIdx[] visibleRooms;
-	DoorIdx[] visibleDoors;
-
-	//BitArray visitedRooms;
-
-	//DoorIdx[] blockedDoors;
 
 	void findPotentialDoors(ref Door[DoorIdx] globalDoors, ref Room[RoomIdx] rooms, const ref Tile[][] map, vec2i mapSize) {
 		void walk(vec2i pos, vec2i dir, vec2i outwards) {
@@ -101,66 +95,5 @@ struct Room {
 
 		walk(position, vec2i(0, 1), vec2i(-1, 0)); // Left
 		walk(position + vec2i(size.x - 1, 0), vec2i(0, 1), vec2i(1, 0)); // Right
-	}
-
-	void setupBits(vec2i roomCount) {
-		//visitedRooms.length = roomCount.x * roomCount.y; // TODO: FIX!
-		//visitedRooms[id.roomID(roomCount)] = true;
-		visibleRooms ~= id;
-	}
-
-	void explore(vec2i p, const ref Door[DoorIdx] globalDoors, ref Room[RoomIdx] rooms, const ref Tile[][] map, const ref vec2i roomCount) {
-		import std.algorithm : filter, canFind;
-		import std.range : chain, empty, popFront, front;
-
-		BitArray visitedDoors;
-		visitedDoors.length = roomCount.x * roomCount.y * 2; // TODO: FIX!
-		BitArray visitedRooms;
-		visitedRooms.length = roomCount.x * roomCount.y; // TODO: FIX!
-		visitedRooms[id.roomID(roomCount)] = true;
-
-		immutable vec2i pos = position + p;
-
-		DoorIdx[] toBeExplored = doors;
-
-		while (!toBeExplored.empty) {
-			const(Door)* door = &globalDoors[toBeExplored.front];
-			scope (exit)
-				toBeExplored.popFront;
-			foreach (y; door.id.y .. door.id.y + door.id.w)
-				foreach (x; door.id.x .. door.id.x + door.id.z)
-					if (validPath(pos, vec2i(x, y), map)) {
-						visibleDoors ~= door.id;
-						// visibleRooms ~= door.rooms[0];
-						// visibleRooms ~= door.rooms[1];
-
-						alias add = (RoomIdx roomIdx) {
-							if (visitedRooms[roomIdx.roomID(roomCount)])
-								return;
-							visitedRooms[roomIdx.roomID(roomCount)] = true;
-							visibleRooms ~= roomIdx;
-							foreach (d; rooms[roomIdx].doors)
-								if (!visitedDoors[d.doorID(roomCount)]) {
-									visitedDoors[d.doorID(roomCount)] = true;
-									toBeExplored ~= d;
-								}
-						};
-						//add(door.rooms[0]);
-						add(door.rooms[1]);
-
-						goto success;
-					}
-			// Failed
-			//blockedDoors ~= door.id;
-		success:
-		}
-	}
-
-	void finalize() {
-		import std.algorithm : sort, uniq, copy;
-
-		doors.length -= doors.sort!"a.toHash < b.toHash".uniq.copy(doors).length;
-		visibleRooms.length -= visibleRooms.sort!"a.toHash < b.toHash".uniq.copy(visibleRooms).length;
-		visibleDoors.length -= visibleDoors.sort!"a.toHash < b.toHash".uniq.copy(visibleDoors).length;
 	}
 }
