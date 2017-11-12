@@ -62,19 +62,21 @@ public:
 
 			writeln("room: ", _currentRoom.id);
 			foreach (portalID; _currentRoom.portals) {
+				import std.algorithm : countUntil;
+
 				Portal* d = &_engine._portals[portalID];
 				writeln("\tportal: ", portalID);
 
 				foreach (i, b; d.canSeePortal)
-					if (b) {
+					if (b && _currentRoom.portals.countUntil(i) == -1) {
 						Portal* dOther = &_engine._portals[i];
 						writeln("\t\tcan see: ", dOther.id, " #### ", dOther.id == i);
+						SDL_SetRenderDrawColor(_engine._window.renderer, cast(ubyte)0xFF, cast(ubyte)0x00, cast(ubyte)0x00, cast(ubyte)0xFF);
 						for (int y = dOther.pos.y; y < dOther.pos.y + dOther.pos.w; y++)
-							for (int x = dOther.pos.x; x < dOther.pos.x + dOther.pos.z; x++) {
-								SDL_SetRenderDrawColor(_engine._window.renderer, cast(ubyte)0xFF, cast(ubyte)0x00, cast(ubyte)0x00, cast(ubyte)0xFF);
+							for (int x = dOther.pos.x; x < dOther.pos.x + dOther.pos.z; x++)
 								SDL_RenderDrawPoint(_engine._window.renderer, x, y);
-							}
 
+						SDL_SetRenderDrawColor(_engine._window.renderer, cast(ubyte)0x00, cast(ubyte)0xFF, cast(ubyte)0x00, cast(ubyte)0xFF);
 						done: foreach (aY; d.pos.y .. d.pos.y + d.pos.w)
 							foreach (aX; d.pos.x .. d.pos.x + d.pos.z)
 								foreach (bY; dOther.pos.y .. dOther.pos.y + dOther.pos.w)
@@ -85,9 +87,9 @@ public:
 										}
 					}
 
+				SDL_SetRenderDrawColor(_engine._window.renderer, cast(ubyte)0xFF, cast(ubyte)0xFF, cast(ubyte)0x00, cast(ubyte)0xFF);
 				for (int y = d.pos.y; y < d.pos.y + d.pos.w; y++)
 					for (int x = d.pos.x; x < d.pos.x + d.pos.z; x++) {
-						SDL_SetRenderDrawColor(_engine._window.renderer, cast(ubyte)0xFF, cast(ubyte)0xFF, cast(ubyte)0x00, cast(ubyte)0xFF);
 						SDL_RenderDrawPoint(_engine._window.renderer, x, y);
 					}
 			}

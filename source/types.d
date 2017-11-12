@@ -58,7 +58,7 @@ bool validPath(vec2i start, vec2i end, const ref Tile[][] map) {
 
 	int sign = dY < 0 ? -1 : 1;
 
-	float deltaErr = dX ? fabs(dY / (1.0f * dX)) : 0;
+	float deltaErr = dX ? fabs((1.0f * dY) / (1.0f * dX)) : 0;
 	float err = 0;
 
 	int y = start.y;
