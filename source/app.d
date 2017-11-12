@@ -6,7 +6,7 @@ import std.bitmanip;
 
 import sdl;
 import types;
-import door;
+import portal;
 import room;
 
 interface IState {
@@ -14,85 +14,6 @@ interface IState {
 	void render();
 	@property bool isDone();
 }
-
-/+final class ExploreState : IState {
-public:
-	this(Engine engine) {
-		_engine = engine;
-	}
-
-	void update() {
-		const size_t step = 1;
-		immutable uint old = SDL_GetTicks();
-
-		do {
-			_explorePos.x += step;
-			if (_explorePos.x >= _engine._roomSize.x) {
-				_explorePos.y += step;
-				_explorePos.x = 0;
-			}
-
-			if (_explorePos.y >= _engine._roomSize.y) {
-				_explorePos.y = 0;
-				_currentRoom.finalize();
-				_roomIdx++;
-			}
-
-			_currentRoom = RoomIdx(cast(int)(_roomIdx % _engine._roomCount.x), cast(int)(_roomIdx / _engine._roomCount.x)) in _engine._rooms;
-			if (_currentRoom && _currentRoom.doors.length)
-				_currentRoom.explore(_explorePos, _engine._doors, _engine._rooms, _engine._map, _engine._roomCount);
-		}
-		while (_currentRoom && SDL_GetTicks() - old < 100 /*msec*/ );
-	}
-
-	void render() {
-		const size_t curPosIdx = _explorePos.y * _engine._roomSize.x + _explorePos.x;
-		foreach (int y, const ref Tile[] xRow; _engine._map)
-			foreach (int x, const ref Tile tile; xRow) {
-				auto c = tile.toColor;
-				if (tile == Tile.Air) {
-					const vec2i myRoomPos = vec2i(x / _engine._roomSize.x, y / _engine._roomSize.y);
-					const size_t myRoomIdx = myRoomPos.y * _engine._roomCount.y + myRoomPos.x;
-					if (myRoomIdx <= _roomIdx) {
-						const size_t myPosIdx = (y % _engine._roomSize.y) * _engine._roomSize.x + x % _engine._roomSize.x;
-						if (myRoomIdx == _roomIdx && myPosIdx >= curPosIdx)
-							c = Color(cast(ubyte)0x7F, cast(ubyte)0x00, cast(ubyte)0x00, cast(ubyte)0xFF); // Status: TODO
-						else
-							c = Color(cast(ubyte)0x00, cast(ubyte)0x7F, cast(ubyte)0x00, cast(ubyte)0xFF); // Status: Done
-					}
-				}
-				SDL_SetRenderDrawColor(_engine._window.renderer, c.x, c.y, c.z, c.w);
-				SDL_RenderDrawPoint(_engine._window.renderer, x, y);
-			}
-
-		if (_currentRoom) {
-			foreach (doorID; _currentRoom.doors) {
-				Door* d = &_engine._doors[doorID];
-
-				for (size_t y; y < d.id.w; y++)
-					for (size_t x; x < d.id.z; x++) {
-						SDL_SetRenderDrawColor(_engine._window.renderer, cast(ubyte)0xFF, cast(ubyte)0xFF, cast(ubyte)0x00, cast(ubyte)0xFF);
-						SDL_RenderDrawPoint(_engine._window.renderer, cast(int)(d.id.x + x), cast(int)(d.id.y + y));
-					}
-			}
-
-			string title = format("Exploring Room (%dx%d), Pixel (%dx%d)", _roomIdx % _engine._roomCount.x,
-					_roomIdx / _engine._roomCount.x, _explorePos.x, _explorePos.y);
-			SDL_SetWindowTitle(_engine._window.window, title.toStringz);
-		} else
-			SDL_SetWindowTitle(_engine._window.window, "Exploring done!");
-	}
-
-	@property bool isDone() {
-		return !_currentRoom;
-	}
-
-private:
-	Engine _engine;
-	size_t _roomIdx;
-	vec2i _explorePos = vec2i(-1, 0);
-	Room* _currentRoom;
-}+/
 
 final class VisualizeState : IState {
 public:
@@ -129,8 +50,8 @@ public:
 					}
 			}*/
 
-			/*foreach (doorID; _currentRoom.visibleDoors) {
-				Door* d = &_engine._doors[doorID];
+			/*foreach (portalID; _currentRoom.visiblePortals) {
+				Portal* d = &_engine._portals[portalID];
 
 				for (size_t y; y < d.id.w; y++)
 					for (size_t x; x < d.id.z; x++) {
@@ -139,22 +60,35 @@ public:
 					}
 			}*/
 
-			foreach (doorID; _currentRoom.doors) {
-				Door* d = &_engine._doors[doorID];
+			writeln("room: ", _currentRoom.id);
+			foreach (portalID; _currentRoom.portals) {
+				Portal* d = &_engine._portals[portalID];
+				writeln("\tportal: ", portalID);
 
-				foreach (i; 0..d.canSeeDoor.length)
-				if (d.canSeeDoor[i]) {
-					for (size_t y; y < d.id.w; y++)
-					for (size_t x; x < d.id.z; x++) {
-						SDL_SetRenderDrawColor(_engine._window.renderer, cast(ubyte)0xFF, cast(ubyte)0x00, cast(ubyte)0x00, cast(ubyte)0xFF);
-						SDL_RenderDrawPoint(_engine._window.renderer, cast(int)(d.id.x + x), cast(int)(d.id.y + y));
+				foreach (i, b; d.canSeePortal)
+					if (b) {
+						Portal* dOther = &_engine._portals[i];
+						writeln("\t\tcan see: ", dOther.id, " #### ", dOther.id == i);
+						for (int y = dOther.pos.y; y < dOther.pos.y + dOther.pos.w; y++)
+							for (int x = dOther.pos.x; x < dOther.pos.x + dOther.pos.z; x++) {
+								SDL_SetRenderDrawColor(_engine._window.renderer, cast(ubyte)0xFF, cast(ubyte)0x00, cast(ubyte)0x00, cast(ubyte)0xFF);
+								SDL_RenderDrawPoint(_engine._window.renderer, x, y);
+							}
+
+						done: foreach (aY; d.pos.y .. d.pos.y + d.pos.w)
+							foreach (aX; d.pos.x .. d.pos.x + d.pos.z)
+								foreach (bY; dOther.pos.y .. dOther.pos.y + dOther.pos.w)
+									foreach (bX; dOther.pos.x .. dOther.pos.x + dOther.pos.z)
+										if (validPath(vec2i(aX, aY), vec2i(bX, bY), _engine._map)) {
+											SDL_RenderDrawLine(_engine._window.renderer, aX, aY, bX, bY);
+											break done;
+										}
 					}
-				}
 
-				for (size_t y; y < d.id.w; y++)
-					for (size_t x; x < d.id.z; x++) {
+				for (int y = d.pos.y; y < d.pos.y + d.pos.w; y++)
+					for (int x = d.pos.x; x < d.pos.x + d.pos.z; x++) {
 						SDL_SetRenderDrawColor(_engine._window.renderer, cast(ubyte)0xFF, cast(ubyte)0xFF, cast(ubyte)0x00, cast(ubyte)0xFF);
-						SDL_RenderDrawPoint(_engine._window.renderer, cast(int)(d.id.x + x), cast(int)(d.id.y + y));
+						SDL_RenderDrawPoint(_engine._window.renderer, x, y);
 					}
 			}
 		}
@@ -191,11 +125,9 @@ public:
 		}
 
 		State state = State.visualize; //State.explore;
-		IState[State] states = [
-			//State.explore : cast(IState)new ExploreState(this),//
-			State.visualize : cast(IState)new VisualizeState(this),//
-			State.end : cast(IState)null
-		];
+		IState[State] states = [ //State.explore : cast(IState)new ExploreState(this),//
+		State.visualize : cast(IState)new VisualizeState(this), //
+			State.end : cast(IState)null];
 
 		while (states[state] && _sdl.doEvent(_window)) {
 			states[state].update();
@@ -220,7 +152,7 @@ private:
 
 	enum _roomSize = vec2i(64);
 	Tile[][] _map;
-	Door[DoorIdx] _doors;
+	Portal[size_t] _portals;
 	Room[RoomIdx] _rooms;
 	vec2i _mapSize;
 	vec2i _roomCount;
@@ -253,15 +185,12 @@ private:
 				}
 		}
 
-		{ // Find doors
-			foreach (ref Room r; _rooms) {
-				r.findPotentialDoors(_doors, _rooms, _map, _mapSize);
-				//r.setupBits(_roomCount);
-			}
-			writeln();
+		{ // Find portals
+			foreach (ref Room r; _rooms)
+				r.findPortals(_portals, _rooms, _map, _mapSize, _roomCount);
 		}
 
-		calculateDoorVisibilities(_doors, _map, _roomCount);
+		calculatePortalVisibilities(_portals, _map, _roomCount);
 	}
 }
 

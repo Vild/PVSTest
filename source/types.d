@@ -7,7 +7,7 @@ alias Color = Vector!(ubyte, 4);
 enum Tile {
 	Air,
 	Wall,
-	Door
+	Portal
 }
 
 Tile toTile(Color c) {
@@ -16,7 +16,7 @@ Tile toTile(Color c) {
 	else if (c == Color(cast(ubyte)0x00, cast(ubyte)0x00, cast(ubyte)0x00, cast(ubyte)0xFF))
 		return Tile.Wall;
 	else if (c == Color(cast(ubyte)0x00, cast(ubyte)0xFF, cast(ubyte)0xFF, cast(ubyte)0xFF))
-		return Tile.Door;
+		return Tile.Portal;
 	else {
 		import std.stdio : stderr;
 
@@ -31,7 +31,7 @@ Color toColor(Tile t) {
 		return Color(cast(ubyte)0x3F, cast(ubyte)0x3F, cast(ubyte)0x3F, cast(ubyte)0xFF);
 	case Tile.Wall:
 		return Color(cast(ubyte)0x00, cast(ubyte)0x00, cast(ubyte)0x00, cast(ubyte)0xFF);
-	case Tile.Door:
+	case Tile.Portal:
 		return Color(cast(ubyte)0x00, cast(ubyte)0xFF, cast(ubyte)0xFF, cast(ubyte)0xFF);
 
 	default:
@@ -43,7 +43,7 @@ Color toColor(Tile t) {
 }
 
 bool isSolid(Tile t) {
-	return t == Tile.Wall;
+	return t != Tile.Air && t != Tile.Portal;
 }
 
 //Bresenham's line algorithm

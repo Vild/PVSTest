@@ -13,6 +13,8 @@ in {
 body {
 	Result!T[] battles;
 	T[] input = input_.dup;
+	scope (exit)
+		input.destroy;
 
 	alias rotate = () {
 		import core.stdc.string : memmove;
