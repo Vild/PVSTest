@@ -31,7 +31,6 @@ struct Room {
 
 			State state = State.LookingForPortal;
 			Portal portal;
-			//write("\rWalking ", pos, " to ", pos + dir * (size - 1 /*aka 0-63*/ ), ". Dir: ", dir, " Outwards: ", outwards);
 
 			void finishPortal() {
 				// Expand portal
@@ -71,12 +70,9 @@ struct Room {
 			}
 
 			for (auto walker = pos; walker != pos + dir * size; walker += dir) {
-				/*if (walker.x < 0 || walker.y < 0 || walker.x >= mapSize.x || walker.y >= mapSize.y)
-					continue;*/
 				switch (map[walker.y][walker.x]) {
 				case Tile.Portal:
 					if (state == State.LookingForPortal) {
-						//writeln("\tMaking a new portal: ", walker);
 						portal.pos = vec4i(walker, 1, 1);
 						state = State.BuildingPortal;
 					} else {
@@ -97,10 +93,8 @@ struct Room {
 				finishPortal();
 		}
 
-		//walk(position, vec2i(1, 0), vec2i(0, -1)); // Top
 		walk(position + vec2i(0, size.y - 1), vec2i(1, 0), vec2i(0, 1)); // Bottom
 
-		// walk(position, vec2i(0, 1), vec2i(-1, 0)); // Left
 		walk(position + vec2i(size.x - 1, 0), vec2i(0, 1), vec2i(1, 0)); // Right
 	}
 }

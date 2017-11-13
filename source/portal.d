@@ -36,7 +36,7 @@ struct Portal {
 }
 
 void calculatePortalVisibilities(ref Portal[PortalIdx] portals, const ref Tile[][] tiles, const ref vec2i roomCount) {
-	import std.algorithm : map, each, fold, joiner;
+	import std.algorithm : map, each, fold, joiner, sort, uniq;
 	import std.array : array;
 	import std.range : chain;
 	import roundRobin : roundRobin, Result;
@@ -45,8 +45,6 @@ void calculatePortalVisibilities(ref Portal[PortalIdx] portals, const ref Tile[]
 	import std.stdio : writeln;
 
 	PortalIdx maxIdx = portalCounter;
-	//portals.byKey.each!((PortalIdx x) { maxIdx = max(maxIdx, x); });
-	//writeln("maxIdx: ", maxIdx);
 	portals.each!((ref x) => x.canSeePortal.length = maxIdx);
 
 	PortalIdx[] portalIndices = portals.byKey.array;
@@ -54,23 +52,19 @@ void calculatePortalVisibilities(ref Portal[PortalIdx] portals, const ref Tile[]
 		portalIndices.destroy;
 
 	// Make sure it's even
-	if (portalIndices.length % 2 == 1)
-		portalIndices ~= PortalIdx.max;
-	//Result!PortalIdx[] toCheck = roundRobin(portalIndices);
+	/*if (portalIndices.length % 2 == 1)
+		portalIndices ~= PortalIdx.max;*/
+	//Result!PortalIdx[] toCheck = roundRobin(portalIndices).sort!().uniq.array;
 	/*scope (exit)
-		toCheck.destroy;*/
+		toCheck.destroy;
+	writeln("toCheck.length: ", toCheck.length);*/
 
-	auto toCheck =
-		portalIndices.map!(
-			a => portalIndices.map!(
-				b => Result!PortalIdx(a, b)
-			)
-		)
-		.joiner;
+	// Check everything agains everything
+	auto toCheck = portalIndices.map!(a => portalIndices.map!(b => Result!PortalIdx(a, b))).joiner;
 
 	foreach (ref Result!PortalIdx r; toCheck) {
-		if (r.a == PortalIdx.max || r.b == PortalIdx.max)
-			continue;
+		/*if (r.a == PortalIdx.max || r.b == PortalIdx.max)
+			continue;*/
 		Portal* a = &portals[r.a];
 		Portal* b = &portals[r.b];
 

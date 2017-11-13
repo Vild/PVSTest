@@ -39,52 +39,47 @@ public:
 			}
 
 		if (_currentRoom) {
-			/*foreach (roomID; _currentRoom.visibleRooms) {
-				Room* d = &_engine._rooms[roomID];
 
-				// Skip walls
+			alias drawRoom = (room) {
 				for (size_t y = 1; y < Room.size.y - 1; y++)
 					for (size_t x = 1; x < Room.size.x - 1; x++) {
 						SDL_SetRenderDrawColor(_engine._window.renderer, cast(ubyte)0xFF, cast(ubyte)0x00, cast(ubyte)0xFF, cast(ubyte)0xFF);
-						SDL_RenderDrawPoint(_engine._window.renderer, cast(int)(d.position.x + x), cast(int)(d.position.y + y));
+						SDL_RenderDrawPoint(_engine._window.renderer, cast(int)(room.position.x + x), cast(int)(room.position.y + y));
 					}
-			}*/
-
-			/*foreach (portalID; _currentRoom.visiblePortals) {
-				Portal* d = &_engine._portals[portalID];
-
-				for (size_t y; y < d.id.w; y++)
-					for (size_t x; x < d.id.z; x++) {
-						SDL_SetRenderDrawColor(_engine._window.renderer, cast(ubyte)0xFF, cast(ubyte)0x00, cast(ubyte)0x00, cast(ubyte)0xFF);
-						SDL_RenderDrawPoint(_engine._window.renderer, cast(int)(d.id.x + x), cast(int)(d.id.y + y));
-					}
-			}*/
-
-			writeln("room: ", _currentRoom.id);
+			};
+			drawRoom(_currentRoom);
 			foreach (portalID; _currentRoom.portals) {
 				import std.algorithm : countUntil;
 
 				Portal* d = &_engine._portals[portalID];
-				writeln("\tportal: ", portalID);
+
+				foreach (i, b; d.canSeePortal)
+					if (b && _currentRoom.portals.countUntil(i) == -1) {
+						import std.algorithm : map;
+
+						foreach (room; _engine._portals[i].rooms[].map!(x => _engine._rooms[x]))
+							drawRoom(room);
+					}
+			}
+
+			foreach (portalID; _currentRoom.portals) {
+				import std.algorithm : countUntil;
+
+				Portal* d = &_engine._portals[portalID];
 
 				foreach (i, b; d.canSeePortal)
 					if (b && _currentRoom.portals.countUntil(i) == -1) {
 						Portal* dOther = &_engine._portals[i];
-						writeln("\t\tcan see: ", dOther.id, " #### ", dOther.id == i);
 						SDL_SetRenderDrawColor(_engine._window.renderer, cast(ubyte)0xFF, cast(ubyte)0x00, cast(ubyte)0x00, cast(ubyte)0xFF);
 						for (int y = dOther.pos.y; y < dOther.pos.y + dOther.pos.w; y++)
 							for (int x = dOther.pos.x; x < dOther.pos.x + dOther.pos.z; x++)
 								SDL_RenderDrawPoint(_engine._window.renderer, x, y);
 
-						SDL_SetRenderDrawColor(_engine._window.renderer, cast(ubyte)0x00, cast(ubyte)0xFF, cast(ubyte)0x00, cast(ubyte)0xFF);
 						done: foreach (aY; d.pos.y .. d.pos.y + d.pos.w)
 							foreach (aX; d.pos.x .. d.pos.x + d.pos.z)
 								foreach (bY; dOther.pos.y .. dOther.pos.y + dOther.pos.w)
 									foreach (bX; dOther.pos.x .. dOther.pos.x + dOther.pos.z)
-										if (validPath(vec2i(aX, aY), vec2i(bX, bY), _engine._map)) {
-											SDL_RenderDrawLine(_engine._window.renderer, aX, aY, bX, bY);
-											break done;
-										}
+										validPathRender(vec2i(aX, aY), vec2i(bX, bY), _engine._map, _engine._window);
 					}
 
 				SDL_SetRenderDrawColor(_engine._window.renderer, cast(ubyte)0xFF, cast(ubyte)0xFF, cast(ubyte)0x00, cast(ubyte)0xFF);
