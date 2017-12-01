@@ -38,7 +38,6 @@ public:
 			}
 
 		if (_currentRoom) {
-
 			alias drawRoom = (room) {
 				for (size_t y = 1; y < Room.size.y - 1; y++)
 					for (size_t x = 1; x < Room.size.x - 1; x++) {
@@ -54,12 +53,10 @@ public:
 				foreach (room; d.rooms[].map!(x => _engine._rooms[x]))
 					drawRoom(room);
 
-				foreach (i, b; d.canSeePortal)
-					if (b && _currentRoom.portals.countUntil(i) == -1) {
-
+				foreach (i; d.canSeePortal.bitsSet)
+					if (_currentRoom.portals.countUntil(i) == -1)
 						foreach (room; _engine._portals[i].rooms[].map!(x => _engine._rooms[x]))
 							drawRoom(room);
-					}
 			}
 
 			foreach (portalID; _currentRoom.portals) {
@@ -67,8 +64,8 @@ public:
 
 				Portal* d = &_engine._portals[portalID];
 
-				foreach (i, b; d.canSeePortal)
-					if (b && _currentRoom.portals.countUntil(i) == -1) {
+				foreach (i; d.canSeePortal.bitsSet)
+					if (_currentRoom.portals.countUntil(i) == -1) {
 						Portal* dOther = &_engine._portals[i];
 						SDL_SetRenderDrawColor(_engine._window.renderer, cast(ubyte)0xFF, cast(ubyte)0x00, cast(ubyte)0x00, cast(ubyte)0xFF);
 						for (int y = dOther.pos.y; y < dOther.pos.y + dOther.pos.w; y++)
@@ -102,45 +99,20 @@ private:
 
 class Engine {
 public:
-	this(string file, vec2i roomSize) {
+	this(string file, vec2i roomSize, string output, bool visualize, bool dot) {
 		Room.size = roomSize;
 		_sdl = new SDL;
 		_loadData(file);
-		_window = new Window(_mapSize.x, _mapSize.y);
+		_savePVS(output);
+		if (dot)
+			_genDot();
+		if (visualize)
+			_window = new Window(_mapSize.x, _mapSize.y);
 	}
 
 	~this() {
 		_window.destroy;
 		_sdl.destroy;
-	}
-
-	void genDot() {
-		import std.stdio : File;
-
-		File f = File("tree.dot", "w");
-		scope (exit)
-			f.close;
-		f.writeln("digraph Rooms {");
-
-		bool[PortalIdx] haveOutput;
-
-		foreach (const ref Portal p; _portals) {
-			f.writefln("P_%s[label=\"%s\",color=blue,style=filled];", p.id, p.pos);
-			size_t canSee;
-			foreach (otherP; p.canSeePortal.bitsSet) {
-				import std.algorithm : min, max;
-
-				PortalIdx a = min(p.id, otherP);
-				PortalIdx b = max(p.id, otherP);
-				if ((((a & 0xFF) << 8) | b) in haveOutput)
-					continue;
-				f.writefln("P_%s -> P_%s[dir=none];\n", a, b);
-				haveOutput[((a & 0xFF) << 8) | b] = true;
-				canSee++;
-			}
-			writeln(p.id, " can see ", canSee, " portals");
-		}
-		f.writeln("}");
 	}
 
 	int run() {
@@ -150,8 +122,6 @@ public:
 
 			end
 		}
-
-		genDot();
 
 		State state = State.visualize; //State.explore;
 		IState[State] states = [ //State.explore : cast(IState)new ExploreState(this),//
@@ -221,6 +191,67 @@ private:
 
 		calculatePortalVisibilities(_portals, _map, _roomCount);
 	}
+
+	void _savePVS(string output) {
+		import std.json : JSONValue;
+		import std.algorithm : sort, uniq;
+		import std.array : array;
+		import std.file : write;
+		JSONValue root;
+		foreach (currentRoom; _rooms) {
+			size_t[] canSee;
+			//writeln("Exploring: ", currentRoom.id.roomID(_roomCount));
+			alias drawRoom = (room) {
+				//writeln("\tCan see: ", room.id.roomID(_roomCount));
+				canSee ~= room.id.roomID(_roomCount);
+			};
+			drawRoom(currentRoom);
+			foreach (portalID; currentRoom.portals) {
+				import std.algorithm : countUntil, map;
+
+				Portal* d = &_portals[portalID];
+				foreach (room; d.rooms[].map!(x => _rooms[x]))
+					drawRoom(room);
+
+				foreach (i; d.canSeePortal.bitsSet)
+					if (currentRoom.portals.countUntil(i) == -1)
+						foreach (room; _portals[i].rooms[].map!(x => _rooms[x]))
+							drawRoom(room);
+			}
+
+			root[currentRoom.id.roomID(_roomCount).to!string] = canSee.sort.uniq.array;
+		}
+		write(output, root.toString());
+	}
+
+	void _genDot() {
+		import std.stdio : File;
+
+		File f = File("map.dot", "w");
+		scope (exit)
+			f.close;
+		f.writeln("digraph Rooms {");
+
+		bool[PortalIdx] haveOutput;
+
+		foreach (const ref Portal p; _portals) {
+			f.writefln("P_%s[label=\"%s\",color=blue,style=filled];", p.id, p.pos);
+			size_t canSee;
+			foreach (otherP; p.canSeePortal.bitsSet) {
+				import std.algorithm : min, max;
+
+				PortalIdx a = min(p.id, otherP);
+				PortalIdx b = max(p.id, otherP);
+				if ((((a & 0xFF) << 8) | b) in haveOutput)
+					continue;
+				f.writefln("P_%s -> P_%s[dir=none];\n", a, b);
+				haveOutput[((a & 0xFF) << 8) | b] = true;
+				canSee++;
+			}
+			//writeln(p.id, " can see ", canSee, " portals");
+		}
+		f.writeln("}");
+	}
 }
 
 int main(string[] args) {
@@ -228,8 +259,16 @@ int main(string[] args) {
 
 	string file;
 	int roomSize;
-	auto helpInformation = getopt(args, "f|file", "The map file", &file, // numeric
-			"s|size", "The room size", &roomSize, // string
+	string output;
+	bool visualize;
+	bool dot;
+	auto helpInformation = getopt(args, //
+			"f|file", "The map file", &file, //
+			"s|size", "The room size", &roomSize, //
+			"o|output",
+			"The pvs output file", &output, //
+			"v|visualize", "Visualize the PVS?", &visualize, //
+			"d|dot", "Generate a map.dot", &dot //
 			);
 	if (helpInformation.helpWanted) {
 		defaultGetoptPrinter("PVSTest", helpInformation.options);
@@ -242,14 +281,21 @@ int main(string[] args) {
 		err = true;
 	}
 	if (!roomSize) {
-		stderr.writeln("You need to specify a room size! (-s 16)");
+		stderr.writeln("You need to specify a room size! (-s 32)");
+		err = true;
+	}
+	if (!output) {
+		stderr.writeln("You need to specify a output file! (-o map.pvs)");
 		err = true;
 	}
 	if (err)
 		return -1;
 
-	Engine e = new Engine(file, vec2i(roomSize));
+	Engine e = new Engine(file, vec2i(roomSize), output, visualize, dot);
 	scope (exit)
 		e.destroy;
-	return e.run();
+	if (visualize)
+		return e.run();
+	else
+		return 0;
 }
