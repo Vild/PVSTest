@@ -1,5 +1,4 @@
 import std.stdio;
-import gfm.math;
 import std.conv;
 import std.string;
 import std.bitmanip;
@@ -43,19 +42,20 @@ public:
 			alias drawRoom = (room) {
 				for (size_t y = 1; y < Room.size.y - 1; y++)
 					for (size_t x = 1; x < Room.size.x - 1; x++) {
-						SDL_SetRenderDrawColor(_engine._window.renderer, cast(ubyte)0xFF, cast(ubyte)0x00, cast(ubyte)0xFF, cast(ubyte)0xFF);
+						SDL_SetRenderDrawColor(_engine._window.renderer, cast(ubyte)0xFF, cast(ubyte)0x00, cast(ubyte)0xFF, cast(ubyte)0x40);
 						SDL_RenderDrawPoint(_engine._window.renderer, cast(int)(room.position.x + x), cast(int)(room.position.y + y));
 					}
 			};
 			drawRoom(_currentRoom);
 			foreach (portalID; _currentRoom.portals) {
-				import std.algorithm : countUntil;
+				import std.algorithm : countUntil, map;
 
 				Portal* d = &_engine._portals[portalID];
+				foreach (room; d.rooms[].map!(x => _engine._rooms[x]))
+					drawRoom(room);
 
 				foreach (i, b; d.canSeePortal)
 					if (b && _currentRoom.portals.countUntil(i) == -1) {
-						import std.algorithm : map;
 
 						foreach (room; _engine._portals[i].rooms[].map!(x => _engine._rooms[x]))
 							drawRoom(room);
@@ -102,15 +102,45 @@ private:
 
 class Engine {
 public:
-	this() {
+	this(string file, vec2i roomSize) {
+		Room.size = roomSize;
 		_sdl = new SDL;
-		_loadData();
+		_loadData(file);
 		_window = new Window(_mapSize.x, _mapSize.y);
 	}
 
 	~this() {
 		_window.destroy;
 		_sdl.destroy;
+	}
+
+	void genDot() {
+		import std.stdio : File;
+
+		File f = File("tree.dot", "w");
+		scope (exit)
+			f.close;
+		f.writeln("digraph Rooms {");
+
+		bool[PortalIdx] haveOutput;
+
+		foreach (const ref Portal p; _portals) {
+			f.writefln("P_%s[label=\"%s\",color=blue,style=filled];", p.id, p.pos);
+			size_t canSee;
+			foreach (otherP; p.canSeePortal.bitsSet) {
+				import std.algorithm : min, max;
+
+				PortalIdx a = min(p.id, otherP);
+				PortalIdx b = max(p.id, otherP);
+				if ((((a & 0xFF) << 8) | b) in haveOutput)
+					continue;
+				f.writefln("P_%s -> P_%s[dir=none];\n", a, b);
+				haveOutput[((a & 0xFF) << 8) | b] = true;
+				canSee++;
+			}
+			writeln(p.id, " can see ", canSee, " portals");
+		}
+		f.writeln("}");
 	}
 
 	int run() {
@@ -120,6 +150,8 @@ public:
 
 			end
 		}
+
+		genDot();
 
 		State state = State.visualize; //State.explore;
 		IState[State] states = [ //State.explore : cast(IState)new ExploreState(this),//
@@ -147,22 +179,22 @@ private:
 	SDL _sdl;
 	Window _window;
 
-	enum _roomSize = vec2i(64);
 	Tile[][] _map;
 	Portal[size_t] _portals;
 	Room[RoomIdx] _rooms;
 	vec2i _mapSize;
 	vec2i _roomCount;
 
-	void _loadData() {
+	void _loadData(string file) {
 		{ // Create tiles
-			SDL_Surface* mapSurface = IMG_Load("map.png");
-			assert(mapSurface, "map.png is missing");
-			scope (exit)
-				SDL_FreeSurface(mapSurface);
+			SDL_Surface* tmp = SDL_LoadBMP(file.toStringz);
+			assert(tmp, file ~ " is missing");
+			SDL_Surface* mapSurface = SDL_ConvertSurfaceFormat(tmp, SDL_PIXELFORMAT_RGBA32, 0);
+			SDL_FreeSurface(tmp);
+			assert(mapSurface, "Failed to convert format");
 			_mapSize = vec2i(mapSurface.w, mapSurface.h);
-			_roomCount = _mapSize / _roomSize;
-			assert(mapSurface.format.format == SDL_PIXELFORMAT_RGBA32, "Wrong format");
+			_roomCount = _mapSize / Room.size;
+			auto f = mapSurface.format.format;
 
 			writeln("Map size: ", _mapSize);
 			foreach (y; 0 .. _mapSize.y) {
@@ -177,7 +209,7 @@ private:
 		{ // Create rooms
 			foreach (y; 0 .. _roomCount.y)
 				foreach (x; 0 .. _roomCount.x) {
-					auto r = Room(RoomIdx(x, y), vec2i(x * _roomSize.x, y * _roomSize.y));
+					auto r = Room(RoomIdx(x, y), vec2i(x * Room.size.x, y * Room.size.y));
 					_rooms[r.id] = r;
 				}
 		}
@@ -192,7 +224,31 @@ private:
 }
 
 int main(string[] args) {
-	Engine e = new Engine();
+	import std.getopt : getopt, arraySep, defaultGetoptPrinter;
+
+	string file;
+	int roomSize;
+	auto helpInformation = getopt(args, "f|file", "The map file", &file, // numeric
+			"s|size", "The room size", &roomSize, // string
+			);
+	if (helpInformation.helpWanted) {
+		defaultGetoptPrinter("PVSTest", helpInformation.options);
+		return 0;
+	}
+
+	bool err;
+	if (!file) {
+		stderr.writeln("You need to specify a map file! (-f map.bmp)");
+		err = true;
+	}
+	if (!roomSize) {
+		stderr.writeln("You need to specify a room size! (-s 16)");
+		err = true;
+	}
+	if (err)
+		return -1;
+
+	Engine e = new Engine(file, vec2i(roomSize));
 	scope (exit)
 		e.destroy;
 	return e.run();

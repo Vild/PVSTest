@@ -27,3 +27,5 @@ docs/
 .gdb_history
 bin/*
 dub.selections.json
+map.*
+*.dot

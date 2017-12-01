@@ -1,6 +1,5 @@
 module portal;
 
-import gfm.math;
 import std.bitmanip : BitArray;
 
 import room;
@@ -31,12 +30,12 @@ struct Portal {
 	string toString() const {
 		import std.format : format;
 
-		return format("\x1b[1;34mPortal(\x1b[1;32mid: \x1b[1;33m%s\x1b[1;34m,\t\x1b[1;32mrooms: \x1b[1;33m%s\x1b[1;34m)\x1b[0m", id, rooms);
+		return format("\x1b[1;34mPortal(\x1b[1;32mid: \x1b[1;33m%s\x1b[1;34m,\x1b[1;32mposition: \x1b[1;33m%s\x1b[1;34m,\t\x1b[1;32mrooms: \x1b[1;33m%s\x1b[1;34m)\x1b[0m", id, pos, rooms);
 	}
 }
 
 void calculatePortalVisibilities(ref Portal[PortalIdx] portals, const ref Tile[][] tiles, const ref vec2i roomCount) {
-	import std.algorithm : map, each, fold, joiner, sort, uniq;
+	import std.algorithm : map, each, fold, joiner, sort, uniq, filter;
 	import std.array : array;
 	import std.range : chain;
 	import roundRobin : roundRobin, Result;
@@ -60,7 +59,7 @@ void calculatePortalVisibilities(ref Portal[PortalIdx] portals, const ref Tile[]
 	writeln("toCheck.length: ", toCheck.length);*/
 
 	// Check everything agains everything
-	auto toCheck = portalIndices.map!(a => portalIndices.map!(b => Result!PortalIdx(a, b))).joiner;
+	auto toCheck = portalIndices.map!(a => portalIndices.map!(b => Result!PortalIdx(a, b))).joiner.filter!(x => x.a != x.b);
 
 	foreach (ref Result!PortalIdx r; toCheck) {
 		/*if (r.a == PortalIdx.max || r.b == PortalIdx.max)
