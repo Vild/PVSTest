@@ -49,19 +49,48 @@ struct Room {
 					return;
 
 				// Verify expansion
-				for (size_t y; y < portal.pos.w; y++)
+				bool recalcBoundaries;
+				outer: for (size_t y; y < portal.pos.w; y++)
 					for (size_t x; x < portal.pos.z; x++)
 						if (map[portal.pos.y + y][portal.pos.x + x] != Tile.Portal) {
+							/*if (y == 0) {
+								y--;
+								portal.pos.y++;
+								portal.pos.w--;
+								continue outer;
+							}
+							if (x == portal.pos.z - 1) {
+								portal.pos.w = cast(int)y;
+								break outer;
+							}*/
+
 							stderr.writeln("\x1b[93;41mMAP HAS A LEAK (Air instead of portal) [", portal.pos.x + x, ", ", portal.pos.y + y, "]\x1b[0m");
-							return;
+							recalcBoundaries = true;
 						}
 
-				// Verify size
-				assert(portal.pos.z == 2 || portal.pos.w == 2, "Invalid door width or height is not 2");
+				if (recalcBoundaries) {
+					vec2i left = portal.pos.xy;
+					vec2i right = portal.pos.xy + portal.pos.zw - outwards;
+					while (map[left.y][left.x] != Tile.Portal && map[left.y + outwards.y][left.x + outwards.x] != Tile.Portal)
+						left += outwards.yx;
+
+					while (map[right.y][right.x] != Tile.Portal && map[right.y - outwards.y][right.x - outwards.x] != Tile.Portal)
+						right -= outwards.yx;
+
+					portal.pos = vec4i(left.x, left.y, right.x - left.x + outwards.x, right.y - left.y + outwards.y);
+				}
 
 				portal.rooms[0] = (portal.pos.xy / size);
 				portal.rooms[1] = ((portal.pos.xy + outwards) / size);
 
+				// Verify size
+				{
+					import std.format : format;
+
+					assert(portal.pos.z == 2 || portal.pos.w == 2,
+							format("Invalid door width or height is not 2: rooms: [%s, %s], [%s, %s],\tpos:[%s,%s]",
+								portal.rooms[0].x, portal.rooms[0].y, portal.rooms[1].x, portal.rooms[1].y, portal.pos.x, portal.pos.y));
+				}
 				portal.id = portalCounter++;
 				lookup[portal.pos] = portal.id;
 				globalPortals[portal.id] = portal;
