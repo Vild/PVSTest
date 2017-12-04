@@ -203,7 +203,8 @@ private:
 			//writeln("Exploring: ", currentRoom.id.roomID(_roomCount));
 			alias drawRoom = (room) {
 				//writeln("\tCan see: ", room.id.roomID(_roomCount));
-				canSee ~= room.id.roomID(_roomCount);
+				if (room.id != currentRoom.id)
+					canSee ~= room.id.roomID(_roomCount);
 			};
 			drawRoom(currentRoom);
 			foreach (portalID; currentRoom.portals) {
