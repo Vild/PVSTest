@@ -53,31 +53,29 @@ struct Room {
 				outer: for (size_t y; y < portal.pos.w; y++)
 					for (size_t x; x < portal.pos.z; x++)
 						if (map[portal.pos.y + y][portal.pos.x + x] != Tile.Portal) {
-							/*if (y == 0) {
-								y--;
-								portal.pos.y++;
-								portal.pos.w--;
-								continue outer;
-							}
-							if (x == portal.pos.z - 1) {
-								portal.pos.w = cast(int)y;
-								break outer;
-							}*/
-
-							stderr.writeln("\x1b[93;41mMAP HAS A LEAK (Air instead of portal) [", portal.pos.x + x, ", ", portal.pos.y + y, "]\x1b[0m");
+							stderr.writeln("\x1b[93;41mMAP HAS A LEAK (Air instead of portal) [", portal.pos.x + x, ", ",
+									portal.pos.y + y, "], will recalc\x1b[0m");
 							recalcBoundaries = true;
+							break outer;
 						}
 
 				if (recalcBoundaries) {
 					vec2i left = portal.pos.xy;
-					vec2i right = portal.pos.xy + portal.pos.zw - outwards;
-					while (map[left.y][left.x] != Tile.Portal && map[left.y + outwards.y][left.x + outwards.x] != Tile.Portal)
+					vec2i right = portal.pos.xy + portal.pos.zw - vec2i(1, 1) - outwards;
+					while (map[left.y][left.x] != Tile.Portal || map[left.y + outwards.y][left.x + outwards.x] != Tile.Portal)
 						left += outwards.yx;
 
-					while (map[right.y][right.x] != Tile.Portal && map[right.y - outwards.y][right.x - outwards.x] != Tile.Portal)
+					while (map[right.y][right.x] != Tile.Portal || map[right.y + outwards.y][right.x + outwards.x] != Tile.Portal)
 						right -= outwards.yx;
 
-					portal.pos = vec4i(left.x, left.y, right.x - left.x + outwards.x, right.y - left.y + outwards.y);
+					portal.pos = vec4i(left.x, left.y, right.x - left.x + outwards.x + 1, right.y - left.y + outwards.y + 1);
+
+					for (size_t y; y < portal.pos.w; y++)
+						for (size_t x; x < portal.pos.z; x++)
+							if (map[portal.pos.y + y][portal.pos.x + x] != Tile.Portal) {
+								stderr.writeln("\x1b[93;41mInvalid door\x1b[0m");
+								return;
+							}
 				}
 
 				portal.rooms[0] = (portal.pos.xy / size);
@@ -124,9 +122,10 @@ struct Room {
 				case Tile.Void:
 				case Tile.Air:
 				case Tile.RoomContent:
-					/*stderr.writeln("\x1b[93;41mMAP HAS A LEAK (", map[walker.y][walker.x], " instead of portal or wall) ", walker, "\x1b[0m");
-					assert(0);*/
-					break;
+					/*stderr.writeln("\x1b[93;41mMAP HAS A LEAK (",
+							map[walker.y][walker.x], " instead of portal or wall) ", walker, "\x1b[0m");*/
+					state = State.LookingForPortal;
+					return;
 				}
 			}
 			if (state == State.BuildingPortal) {
