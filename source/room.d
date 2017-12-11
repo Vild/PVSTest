@@ -23,60 +23,30 @@ struct Room {
 
 	void findPortals(ref Portal[PortalIdx] globalPortals, ref Room[RoomIdx] rooms, const ref Tile[][] map,
 			const ref vec2i mapSize, const ref vec2i roomCount) {
-		void walk(vec2i pos, vec2i dir, vec2i outwards) {
+		void walk(vec2i pos, vec2i dir) {
 			enum State {
 				LookingForPortal,
 				BuildingPortal
 			}
+			vec2i outwards = dir.yx;
 
 			State state = State.LookingForPortal;
 			Portal portal;
 
 			void finishPortal() {
-				// Expand portal
-				if (outwards.x < 0 || outwards.y < 0) {
-					portal.pos.x += outwards.x;
-					portal.pos.y += outwards.y;
-					portal.pos.z -= outwards.x;
-					portal.pos.w -= outwards.y;
-				} else {
-					portal.pos.z += outwards.x;
-					portal.pos.w += outwards.y;
-				}
-				writeln("\tFinalizing, extending to: ", portal.pos);
+				writeln("\tFinalizing: ", portal.pos);
 
 				if (portal.pos in lookup)
 					return;
 
-				// Verify expansion
-				bool recalcBoundaries;
-				outer: for (size_t y; y < portal.pos.w; y++)
+				// Verify portal
+				for (size_t y; y < portal.pos.w; y++)
 					for (size_t x; x < portal.pos.z; x++)
 						if (map[portal.pos.y + y][portal.pos.x + x] != Tile.Portal) {
-							stderr.writeln("\x1b[93;41mMAP HAS A LEAK (Air instead of portal) [", portal.pos.x + x, ", ",
-									portal.pos.y + y, "], will recalc\x1b[0m");
-							recalcBoundaries = true;
-							break outer;
+							stderr.writeln("\x1b[93;41mMAP HAS A LEAK (", map[portal.pos.y + y][portal.pos.x + x],
+									" instead of portal) [", portal.pos.x + x, ", ", portal.pos.y + y, "], will recalc\x1b[0m");
+							return;
 						}
-
-				if (recalcBoundaries) {
-					vec2i left = portal.pos.xy;
-					vec2i right = portal.pos.xy + portal.pos.zw - vec2i(1, 1) - outwards;
-					while (map[left.y][left.x] != Tile.Portal || map[left.y + outwards.y][left.x + outwards.x] != Tile.Portal)
-						left += outwards.yx;
-
-					while (map[right.y][right.x] != Tile.Portal || map[right.y + outwards.y][right.x + outwards.x] != Tile.Portal)
-						right -= outwards.yx;
-
-					portal.pos = vec4i(left.x, left.y, right.x - left.x + outwards.x + 1, right.y - left.y + outwards.y + 1);
-
-					for (size_t y; y < portal.pos.w; y++)
-						for (size_t x; x < portal.pos.z; x++)
-							if (map[portal.pos.y + y][portal.pos.x + x] != Tile.Portal) {
-								stderr.writeln("\x1b[93;41mInvalid door\x1b[0m");
-								return;
-							}
-				}
 
 				portal.rooms[0] = (portal.pos.xy / size);
 				portal.rooms[1] = ((portal.pos.xy + outwards) / size);
@@ -85,6 +55,7 @@ struct Room {
 				{
 					import std.format : format;
 
+					// TODO: Probably not needed
 					assert(portal.pos.z == 2 || portal.pos.w == 2,
 							format("Invalid door width or height is not 2: rooms: [%s, %s], [%s, %s],\tpos:[%s,%s]",
 								portal.rooms[0].x, portal.rooms[0].y, portal.rooms[1].x, portal.rooms[1].y, portal.pos.x, portal.pos.y));
@@ -95,7 +66,7 @@ struct Room {
 				rooms[portal.rooms[0]].portals ~= portal.id;
 				rooms[portal.rooms[1]].portals ~= portal.id;
 
-				writeln("\x1b[1;32mFinalized: ", portal, "\x1b[0m");
+				writeln("\t\x1b[1;32mFinalized: ", portal, "\x1b[0m");
 				state = State.LookingForPortal;
 				portal = Portal.init;
 			}
@@ -103,8 +74,20 @@ struct Room {
 			for (auto walker = pos; walker != pos + dir * size; walker += dir) {
 				final switch (map[walker.y][walker.x]) {
 				case Tile.Portal:
+					Tile extension = map[walker.y + outwards.y][walker.x + outwards.x];
+					if (extension != Tile.Portal) {
+						if (extension == Tile.Wall) {
+							if (state == State.BuildingPortal)
+								goto tileWall;
+							else
+								break;
+						}
+						stderr.writeln("\x1b[93;41mMAP HAS A LEAK (", extension, " instead of portal) ", walker, "\x1b[0m");
+						return;
+					}
+
 					if (state == State.LookingForPortal) {
-						portal.pos = vec4i(walker, 1, 1);
+						portal.pos = vec4i(walker, 1 + outwards.x, 1 + outwards.y);
 						state = State.BuildingPortal;
 						writeln("Starting at pos: ", portal.pos);
 					} else {
@@ -114,6 +97,7 @@ struct Room {
 					}
 					break;
 				case Tile.Wall:
+				tileWall:
 					if (state == State.BuildingPortal) {
 						finishPortal();
 						state = State.LookingForPortal;
@@ -122,8 +106,8 @@ struct Room {
 				case Tile.Void:
 				case Tile.Air:
 				case Tile.RoomContent:
-					/*stderr.writeln("\x1b[93;41mMAP HAS A LEAK (",
-							map[walker.y][walker.x], " instead of portal or wall) ", walker, "\x1b[0m");*/
+					stderr.writeln("\x1b[93;41mMAP HAS A LEAK (",
+							map[walker.y][walker.x], " instead of portal or wall) ", walker, "\x1b[0m");
 					state = State.LookingForPortal;
 					return;
 				}
@@ -134,8 +118,8 @@ struct Room {
 			}
 		}
 
-		walk(position + vec2i(0, size.y - 1), vec2i(1, 0), vec2i(0, 1)); // Bottom
+		walk(position + vec2i(0, size.y - 1), vec2i(1, 0)); // Bottom
 
-		walk(position + vec2i(size.x - 1, 0), vec2i(0, 1), vec2i(1, 0)); // Right
+		walk(position + vec2i(size.x - 1, 0), vec2i(0, 1)); // Right
 	}
 }

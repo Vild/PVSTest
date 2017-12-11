@@ -97,7 +97,8 @@ Color toColor(Tile t) {
 }
 
 bool isSolid(Tile t) pure nothrow @nogc {
-	return t != Tile.Air && t != Tile.Void && t != Tile.RoomContent && t != Tile.Portal;
+	// Tile.Void is Solid
+	return t != Tile.Air && t != Tile.RoomContent && t != Tile.Portal;
 }
 
 //Bresenham's line algorithm
