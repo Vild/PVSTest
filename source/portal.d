@@ -59,9 +59,10 @@ void calculatePortalVisibilities(ref Portal[PortalIdx] portals, const ref Tile[]
 	writeln("toCheck.length: ", toCheck.length);*/
 
 	// Check everything agains everything
-	auto toCheck = portalIndices.map!(a => portalIndices.map!(b => Result!PortalIdx(a, b))).joiner.filter!(x => x.a != x.b);
+	auto toCheck = portalIndices.map!(a => portalIndices.map!(b => Result!PortalIdx(a, b))).joiner.filter!(x => x.a != x.b).array;
 
-	foreach (ref Result!PortalIdx r; toCheck) {
+	import std.parallelism;
+	foreach (ref Result!PortalIdx r; toCheck.parallel) {
 		/*if (r.a == PortalIdx.max || r.b == PortalIdx.max)
 			continue;*/
 		Portal* a = &portals[r.a];
